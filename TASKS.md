@@ -88,10 +88,10 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** receiver accepts Opus packets and plays them to VB-CABLE.
 
 ### 1.6 Add receiver diagnostics/logging
-- [ ] Log startup config: port, device, latency, buffer
-- [ ] Packets/sec counter (rolling every 1s)
-- [ ] Decode error counter
-- [ ] Buffer overflow/underrun logs (best-effort)
+- [x] Log startup config: port, device, latency, buffer
+- [x] Packets/sec counter (rolling every 1s)
+- [x] Decode error counter
+- [x] Buffer overflow/underrun logs (best-effort)
 
 **Done when:** logs are useful for debugging.
 
