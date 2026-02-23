@@ -78,7 +78,7 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 - [ ] Replace raw PCM mode with Opus mode (default)
 - [ ] Use Concentus `OpusDecoder`:
   - [ ] Sample rate 48000
-  - [ ] Channels 1
+  - [ ] Channels 2
   - [ ] Decode each datagram as a single Opus packet
 - [ ] Convert decoded `short[]` PCM to bytes and push to buffer
 - [ ] Handle decode errors:
