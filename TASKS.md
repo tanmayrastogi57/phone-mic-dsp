@@ -58,12 +58,12 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** running app prints selected device or lists devices.
 
 ### 1.3 Implement WASAPI output with buffering
-- [ ] Use `WasapiOut` (shared mode)
-- [ ] Create `BufferedWaveProvider`
-- [ ] Add PCM write helper to push bytes into buffer
-- [ ] Add config knobs (CLI or config file):
-  - [ ] output latency ms (default 50)
-  - [ ] buffer length ms (default 500)
+- [x] Use `WasapiOut` (shared mode)
+- [x] Create `BufferedWaveProvider`
+- [x] Add PCM write helper to push bytes into buffer
+- [x] Add config knobs (CLI or config file):
+  - [x] output latency ms (default 50)
+  - [x] buffer length ms (default 500)
 
 **Done when:** app runs and plays a generated test tone (optional) or accepts injected PCM.
 
