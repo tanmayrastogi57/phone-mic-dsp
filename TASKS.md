@@ -7,19 +7,19 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 ## Phase 0 — Project Setup (Repo + Standards)
 
 ### 0.1 Create repository structure
-- [ ] Create folders:
-  - [ ] `/android/`
-  - [ ] `/windows/`
-  - [ ] `/docs/`
-- [ ] Add baseline docs:
-  - [ ] `README.md`
-  - [ ] `AGENT.md`
-  - [ ] `ARCHITECTURE.md`
-  - [ ] `SPEC.md`
-  - [ ] `requirements.md`
-  - [ ] `TASKS.md`
-- [ ] Add license placeholder:
-  - [ ] `LICENSE` (MIT or Apache-2.0)
+- [x] Create folders:
+  - [x] `/android/`
+  - [x] `/windows/`
+  - [x] `/docs/`
+- [x] Add baseline docs:
+  - [x] `README.md`
+  - [x] `AGENT.md`
+  - [x] `ARCHITECTURE.md`
+  - [x] `SPEC.md`
+  - [x] `requirements.md`
+  - [x] `TASKS.md`
+- [x] Add license placeholder:
+  - [x] `LICENSE` (MIT or Apache-2.0)
 
 **Done when:** repo tree matches plan and markdown docs exist.
 
