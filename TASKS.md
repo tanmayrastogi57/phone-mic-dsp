@@ -25,11 +25,11 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 
 ### 0.2 Tooling and coding standards
 - [ ] Decide/lock:
-  - [ ] .NET version: **.NET 8**
-  - [ ] Android: minSdk **24**, targetSdk **34**
-- [ ] Add `.gitignore` for Android + Visual Studio
-- [ ] Add `CONTRIBUTING.md` (minimal: build/run steps + formatting)
-- [ ] Add `CHANGELOG.md` (empty but present)
+  - [x] .NET version: **.NET 8**
+  - [x] Android: minSdk **24**, targetSdk **34**
+- [x] Add `.gitignore` for Android + Visual Studio
+- [x] Add `CONTRIBUTING.md` (minimal: build/run steps + formatting)
+- [x] Add `CHANGELOG.md` (empty but present)
 
 **Done when:** clean first commit builds skeleton projects.
 
