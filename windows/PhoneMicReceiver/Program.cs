@@ -1,11 +1,14 @@
+using System.Net.Sockets;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 const string defaultDeviceSubstring = "CABLE Input";
+const int defaultPort = 5555;
 const int sampleRate = 48_000;
 const int channels = 1;
 const int bitsPerSample = 16;
 
+int listenPort = ParsePositiveIntArg(args, 0, defaultPort, "port");
 string deviceSubstring = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1])
     ? args[1]
     : defaultDeviceSubstring;
@@ -52,9 +55,11 @@ output.Init(bufferedWaveProvider);
 output.Play();
 
 Console.WriteLine($"Selected output device: {selectedDevice.FriendlyName}");
+Console.WriteLine($"UDP listen port: {listenPort}");
 Console.WriteLine($"Output latency: {outputLatencyMs} ms");
 Console.WriteLine($"Buffer length: {bufferLengthMs} ms");
-Console.WriteLine("WASAPI output is running. Press Ctrl+C to stop.");
+Console.WriteLine("WASAPI output is running.");
+Console.WriteLine("Receiver is in raw PCM UDP mode for debugging. Press Ctrl+C to stop.");
 
 if (testToneSeconds > 0)
 {
@@ -64,17 +69,63 @@ if (testToneSeconds > 0)
 }
 
 var shutdown = new ManualResetEventSlim(false);
+using var cancellationTokenSource = new CancellationTokenSource();
+
 Console.CancelKeyPress += (_, eventArgs) =>
 {
     eventArgs.Cancel = true;
+    cancellationTokenSource.Cancel();
     shutdown.Set();
 };
 
+var receiverTask = ReceiveUdpPcmAsync(listenPort, cancellationTokenSource.Token);
+
 shutdown.Wait();
+
+try
+{
+    await receiverTask;
+}
+catch (OperationCanceledException)
+{
+}
 
 void WritePcmToBuffer(ReadOnlySpan<byte> pcmBytes)
 {
     bufferedWaveProvider.AddSamples(pcmBytes.ToArray(), 0, pcmBytes.Length);
+}
+
+async Task ReceiveUdpPcmAsync(int port, CancellationToken cancellationToken)
+{
+    using var udpClient = new UdpClient(port);
+
+    Console.WriteLine($"Listening for UDP audio packets on 0.0.0.0:{port}...");
+
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        UdpReceiveResult packet;
+
+        try
+        {
+            packet = await udpClient.ReceiveAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            break;
+        }
+        catch (SocketException ex)
+        {
+            Console.Error.WriteLine($"UDP receive error: {ex.Message}");
+            continue;
+        }
+
+        if (packet.Buffer.Length == 0)
+        {
+            continue;
+        }
+
+        WritePcmToBuffer(packet.Buffer);
+    }
 }
 
 static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSampleRate)
