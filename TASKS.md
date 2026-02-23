@@ -40,11 +40,11 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Goal: Windows receiver can play any decoded PCM into VB-CABLE reliably.
 
 ### 1.1 Create Windows solution and console app
-- [ ] Create `windows/PhoneMicReceiver.sln`
-- [ ] Create console project `windows/PhoneMicReceiver/PhoneMicReceiver.csproj`
-- [ ] Add NuGet dependencies:
-  - [ ] `NAudio`
-  - [ ] `Concentus`
+- [x] Create `windows/PhoneMicReceiver.sln`
+- [x] Create console project `windows/PhoneMicReceiver/PhoneMicReceiver.csproj`
+- [x] Add NuGet dependencies:
+  - [x] `NAudio`
+  - [x] `Concentus`
 
 **Done when:** `dotnet build` succeeds.
 
