@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using Concentus.Structs;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -59,7 +60,7 @@ Console.WriteLine($"UDP listen port: {listenPort}");
 Console.WriteLine($"Output latency: {outputLatencyMs} ms");
 Console.WriteLine($"Buffer length: {bufferLengthMs} ms");
 Console.WriteLine("WASAPI output is running.");
-Console.WriteLine("Receiver is in raw PCM UDP mode for debugging. Press Ctrl+C to stop.");
+Console.WriteLine("Receiver is in Opus UDP mode. Press Ctrl+C to stop.");
 
 if (testToneSeconds > 0)
 {
@@ -78,7 +79,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     shutdown.Set();
 };
 
-var receiverTask = ReceiveUdpPcmAsync(listenPort, cancellationTokenSource.Token);
+var receiverTask = ReceiveUdpOpusAsync(listenPort, cancellationTokenSource.Token);
 
 shutdown.Wait();
 
@@ -95,11 +96,16 @@ void WritePcmToBuffer(ReadOnlySpan<byte> pcmBytes)
     bufferedWaveProvider.AddSamples(pcmBytes.ToArray(), 0, pcmBytes.Length);
 }
 
-async Task ReceiveUdpPcmAsync(int port, CancellationToken cancellationToken)
+async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
 {
     using var udpClient = new UdpClient(port);
+    var opusDecoder = OpusDecoder.Create(sampleRate, channels);
+    long decodeErrors = 0;
 
-    Console.WriteLine($"Listening for UDP audio packets on 0.0.0.0:{port}...");
+    const int frameSize = 960;
+    var decodedSamples = new short[frameSize * channels];
+
+    Console.WriteLine($"Listening for UDP Opus packets on 0.0.0.0:{port}...");
 
     while (!cancellationToken.IsCancellationRequested)
     {
@@ -124,8 +130,28 @@ async Task ReceiveUdpPcmAsync(int port, CancellationToken cancellationToken)
             continue;
         }
 
-        WritePcmToBuffer(packet.Buffer);
+        try
+        {
+            int decodedSamplesPerChannel = opusDecoder.Decode(packet.Buffer, 0, packet.Buffer.Length, decodedSamples, 0, frameSize, false);
+            int totalSamples = decodedSamplesPerChannel * channels;
+
+            if (totalSamples <= 0)
+            {
+                decodeErrors++;
+                continue;
+            }
+
+            var pcmBytes = new byte[totalSamples * sizeof(short)];
+            Buffer.BlockCopy(decodedSamples, 0, pcmBytes, 0, pcmBytes.Length);
+            WritePcmToBuffer(pcmBytes);
+        }
+        catch (OpusException)
+        {
+            decodeErrors++;
+        }
     }
+
+    Console.WriteLine($"Total Opus decode errors: {decodeErrors}");
 }
 
 static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSampleRate)

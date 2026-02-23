@@ -75,15 +75,15 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** can send dummy PCM packets and hear audio through VB-CABLE.
 
 ### 1.5 Implement Opus decode path
-- [ ] Replace raw PCM mode with Opus mode (default)
-- [ ] Use Concentus `OpusDecoder`:
-  - [ ] Sample rate 48000
-  - [ ] Channels 2
-  - [ ] Decode each datagram as a single Opus packet
-- [ ] Convert decoded `short[]` PCM to bytes and push to buffer
-- [ ] Handle decode errors:
-  - [ ] increment counter
-  - [ ] drop packet and continue
+- [x] Replace raw PCM mode with Opus mode (default)
+- [x] Use Concentus `OpusDecoder`:
+  - [x] Sample rate 48000
+  - [x] Channels 1
+  - [x] Decode each datagram as a single Opus packet
+- [x] Convert decoded `short[]` PCM to bytes and push to buffer
+- [x] Handle decode errors:
+  - [x] increment counter
+  - [x] drop packet and continue
 
 **Done when:** receiver accepts Opus packets and plays them to VB-CABLE.
 
