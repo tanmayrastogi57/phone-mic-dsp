@@ -68,9 +68,9 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** app runs and plays a generated test tone (optional) or accepts injected PCM.
 
 ### 1.4 Implement UDP receiver loop (no Opus yet)
-- [ ] Listen UDP on port (default 5555)
-- [ ] Receive datagrams
-- [ ] For test mode, interpret payload as raw PCM and push to buffer (debug-only)
+- [x] Listen UDP on port (default 5555)
+- [x] Receive datagrams
+- [x] For test mode, interpret payload as raw PCM and push to buffer (debug-only)
 
 **Done when:** can send dummy PCM packets and hear audio through VB-CABLE.
 
