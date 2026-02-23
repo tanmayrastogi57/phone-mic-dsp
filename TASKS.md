@@ -49,11 +49,11 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** `dotnet build` succeeds.
 
 ### 1.2 Implement audio output device selection
-- [ ] Enumerate render devices (MMDeviceEnumerator)
-- [ ] Select device by substring (default `"CABLE Input"`)
-- [ ] If not found:
-  - [ ] Print all render devices
-  - [ ] Exit with non-zero code
+- [x] Enumerate render devices (MMDeviceEnumerator)
+- [x] Select device by substring (default `"CABLE Input"`)
+- [x] If not found:
+  - [x] Print all render devices
+  - [x] Exit with non-zero code
 
 **Done when:** running app prints selected device or lists devices.
 
