@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Diagnostics;
 using Concentus.Structs;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -56,9 +57,7 @@ output.Init(bufferedWaveProvider);
 output.Play();
 
 Console.WriteLine($"Selected output device: {selectedDevice.FriendlyName}");
-Console.WriteLine($"UDP listen port: {listenPort}");
-Console.WriteLine($"Output latency: {outputLatencyMs} ms");
-Console.WriteLine($"Buffer length: {bufferLengthMs} ms");
+Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}");
 Console.WriteLine("WASAPI output is running.");
 Console.WriteLine("Receiver is in Opus UDP mode. Press Ctrl+C to stop.");
 
@@ -100,7 +99,13 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
 {
     using var udpClient = new UdpClient(port);
     var opusDecoder = OpusDecoder.Create(sampleRate, channels);
+    long packetsThisWindow = 0;
+    long packetsTotal = 0;
     long decodeErrors = 0;
+    long overflows = 0;
+    long underruns = 0;
+    var statsWindow = Stopwatch.StartNew();
+    bool bufferPrimed = false;
 
     const int frameSize = 960;
     var decodedSamples = new short[frameSize * channels];
@@ -130,6 +135,9 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
             continue;
         }
 
+        packetsThisWindow++;
+        packetsTotal++;
+
         try
         {
             int decodedSamplesPerChannel = opusDecoder.Decode(packet.Buffer, 0, packet.Buffer.Length, decodedSamples, 0, frameSize, false);
@@ -143,15 +151,37 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
 
             var pcmBytes = new byte[totalSamples * sizeof(short)];
             Buffer.BlockCopy(decodedSamples, 0, pcmBytes, 0, pcmBytes.Length);
+
+            if (bufferedWaveProvider.BufferedBytes + pcmBytes.Length > bufferedWaveProvider.BufferLength)
+            {
+                overflows++;
+                Console.WriteLine($"[buffer] overflow predicted; dropping oldest samples (event #{overflows}).");
+            }
+
             WritePcmToBuffer(pcmBytes);
+            bufferPrimed = true;
         }
         catch (OpusException)
         {
             decodeErrors++;
         }
+
+        if (statsWindow.ElapsedMilliseconds >= 1_000)
+        {
+            double bufferedMs = bufferedWaveProvider.BufferedDuration.TotalMilliseconds;
+            if (bufferPrimed && bufferedMs < 10)
+            {
+                underruns++;
+                Console.WriteLine($"[buffer] underrun risk; buffered={bufferedMs:F1}ms (event #{underruns}).");
+            }
+
+            Console.WriteLine($"[stats] packets/sec={packetsThisWindow}, decodeErrors={decodeErrors}, bufferedMs={bufferedMs:F1}, overflows={overflows}, underruns={underruns}");
+            packetsThisWindow = 0;
+            statsWindow.Restart();
+        }
     }
 
-    Console.WriteLine($"Total Opus decode errors: {decodeErrors}");
+    Console.WriteLine($"Receiver stopped. packetsTotal={packetsTotal}, decodeErrors={decodeErrors}, overflows={overflows}, underruns={underruns}");
 }
 
 static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSampleRate)
