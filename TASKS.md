@@ -111,13 +111,13 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** app installs and launches on device.
 
 ### 2.2 Add permissions + foreground service scaffolding
-- [ ] Add permissions:
-  - [ ] `RECORD_AUDIO`
-  - [ ] `INTERNET`
-  - [ ] `FOREGROUND_SERVICE`
-- [ ] Implement Foreground Service:
-  - [ ] persistent notification channel
-  - [ ] start/stop actions
+- [x] Add permissions:
+  - [x] `RECORD_AUDIO`
+  - [x] `INTERNET`
+  - [x] `FOREGROUND_SERVICE`
+- [x] Implement Foreground Service:
+  - [x] persistent notification channel
+  - [x] start/stop actions
 
 **Done when:** service runs without being killed quickly.
 
