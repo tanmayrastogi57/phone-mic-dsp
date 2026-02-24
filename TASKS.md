@@ -102,11 +102,11 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Goal: Android app captures via DSP pipeline and streams Opus over UDP to Windows receiver.
 
 ### 2.1 Create Android Studio project
-- [ ] Create project under `/android/`
-- [ ] Kotlin, single-activity (Compose optional; keep simple)
-- [ ] Set:
-  - [ ] minSdk 24
-  - [ ] targetSdk 34
+- [x] Create project under `/android/`
+- [x] Kotlin, single-activity (Compose optional; keep simple)
+- [x] Set:
+  - [x] minSdk 24
+  - [x] targetSdk 34
 
 **Done when:** app installs and launches on device.
 
