@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.SocketException
 import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -42,11 +43,13 @@ class AudioStreamingService : Service() {
     private val captureActive = AtomicBoolean(false)
     private var lastMeasuredFramesPerSecond = 0
     private var currentDspSummary: String = ""
+    private var lastErrorMessage: String? = null
 
     private var acousticEchoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
     private var automaticGainControl: AutomaticGainControl? = null
     private var opusEncoder: OpusFrameEncoder? = null
+    private var udpSocket: DatagramSocket? = null
 
     private lateinit var audioManager: AudioManager
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
@@ -93,6 +96,7 @@ class AudioStreamingService : Service() {
             putExtra(EXTRA_STATUS_STREAMING, isStreaming)
             putExtra(EXTRA_STATUS_PACKETS_PER_SECOND, lastMeasuredFramesPerSecond)
             putExtra(EXTRA_STATUS_DSP_SUMMARY, currentDspSummary)
+            putExtra(EXTRA_STATUS_ERROR, lastErrorMessage)
         }
         sendBroadcast(statusIntent)
     }
@@ -107,6 +111,13 @@ class AudioStreamingService : Service() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "RECORD_AUDIO permission not granted; capture pipeline cannot start.")
             currentDspSummary = getString(R.string.dsp_status_permission_missing)
+            lastErrorMessage = getString(R.string.error_permission_missing)
+            isStreaming = false
+            sendStatusUpdate()
+            return
+        }
+
+        val validatedEndpoint = parseDestinationEndpoint() ?: run {
             isStreaming = false
             sendStatusUpdate()
             return
@@ -121,6 +132,7 @@ class AudioStreamingService : Service() {
         if (minimumBufferBytes == AudioRecord.ERROR || minimumBufferBytes == AudioRecord.ERROR_BAD_VALUE) {
             Log.e(TAG, "Failed to determine minimum AudioRecord buffer size: $minimumBufferBytes")
             currentDspSummary = getString(R.string.dsp_status_audio_init_failed)
+            lastErrorMessage = getString(R.string.error_audio_record_init)
             isStreaming = false
             sendStatusUpdate()
             return
@@ -145,6 +157,7 @@ class AudioStreamingService : Service() {
             audioManager.mode = previousAudioMode
             localAudioRecord.release()
             currentDspSummary = getString(R.string.dsp_status_audio_init_failed)
+            lastErrorMessage = getString(R.string.error_audio_record_init)
             isStreaming = false
             sendStatusUpdate()
             return
@@ -161,31 +174,29 @@ class AudioStreamingService : Service() {
 
         captureActive.set(true)
         isStreaming = true
+        lastErrorMessage = null
         lastMeasuredFramesPerSecond = 0
         sendStatusUpdate()
 
-        captureThread = Thread({ captureLoop(localAudioRecord) }, "audio-capture-thread").also { it.start() }
+        captureThread = Thread({ captureLoop(localAudioRecord, validatedEndpoint.address) }, "audio-capture-thread").also { it.start() }
         statusThread = Thread({ statusLoop() }, "audio-status-thread").also { it.start() }
     }
 
-    private fun captureLoop(localAudioRecord: AudioRecord) {
+    private fun captureLoop(localAudioRecord: AudioRecord, destinationAddress: InetAddress) {
         val frameBuffer = ShortArray(FRAME_SIZE_SAMPLES)
         var framesSinceLastTick = 0
         var lastTickTime = System.currentTimeMillis()
-        val destinationAddress = resolveDestinationAddress() ?: run {
-            captureActive.set(false)
-            isStreaming = false
-            return
-        }
-
-        val udpSocket = try {
+        val localSocket = try {
             DatagramSocket()
         } catch (socketException: SocketException) {
             Log.e(TAG, "Failed to create UDP socket.", socketException)
             captureActive.set(false)
             isStreaming = false
+            lastErrorMessage = getString(R.string.error_udp_socket_init)
+            sendStatusUpdate()
             return
         }
+        udpSocket = localSocket
 
         val localOpusEncoder = try {
             OpusFrameEncoder(SAMPLE_RATE, CHANNEL_COUNT, BITRATE_BPS, OPUS_COMPLEXITY, OPUS_FEC_ENABLED)
@@ -193,8 +204,10 @@ class AudioStreamingService : Service() {
             Log.e(TAG, "Failed to initialize Opus encoder.", exception)
             captureActive.set(false)
             isStreaming = false
+            lastErrorMessage = getString(R.string.error_opus_encoder_init)
             sendStatusUpdate()
-            udpSocket.close()
+            localSocket.close()
+            udpSocket = null
             return
         }
         opusEncoder = localOpusEncoder
@@ -218,7 +231,7 @@ class AudioStreamingService : Service() {
 
                 val opusPayload = localOpusEncoder.encodeFrame(frameBuffer) ?: continue
                 val packet = DatagramPacket(opusPayload, opusPayload.size, destinationAddress, destinationPort)
-                udpSocket.send(packet)
+                localSocket.send(packet)
 
                 framesSinceLastTick++
                 val now = System.currentTimeMillis()
@@ -230,26 +243,40 @@ class AudioStreamingService : Service() {
             }
         } catch (exception: IllegalStateException) {
             Log.e(TAG, "Capture loop failed with IllegalStateException", exception)
+            lastErrorMessage = getString(R.string.error_capture_illegal_state)
         } catch (exception: Exception) {
             Log.e(TAG, "Capture loop failed while sending UDP Opus.", exception)
+            lastErrorMessage = getString(R.string.error_capture_loop_failure)
         } finally {
             localOpusEncoder.release()
             opusEncoder = null
-            udpSocket.close()
+            localSocket.close()
+            udpSocket = null
             try {
                 localAudioRecord.stop()
             } catch (stopException: IllegalStateException) {
                 Log.w(TAG, "AudioRecord stop failed", stopException)
             }
             Log.i(TAG, "Capture loop stopped.")
+            sendStatusUpdate()
         }
     }
 
-    private fun resolveDestinationAddress(): InetAddress? {
+    private fun parseDestinationEndpoint(): InetSocketAddress? {
+        if (destinationPort !in 1..65535) {
+            Log.e(TAG, "Invalid destination port: $destinationPort")
+            currentDspSummary = getString(R.string.dsp_status_invalid_target)
+            lastErrorMessage = getString(R.string.error_invalid_port)
+            return null
+        }
+
         return try {
-            InetAddress.getByName(destinationIp)
+            val address = InetAddress.getByName(destinationIp)
+            InetSocketAddress(address, destinationPort)
         } catch (exception: UnknownHostException) {
             Log.e(TAG, "Unable to resolve destination IP: $destinationIp", exception)
+            currentDspSummary = getString(R.string.dsp_status_invalid_target)
+            lastErrorMessage = getString(R.string.error_invalid_ip)
             null
         }
     }
@@ -267,6 +294,10 @@ class AudioStreamingService : Service() {
 
     private fun stopCapturePipeline() {
         captureActive.set(false)
+
+        runCatching { audioRecord?.stop() }
+        udpSocket?.close()
+        udpSocket = null
 
         captureThread?.interrupt()
         captureThread?.join(THREAD_JOIN_TIMEOUT_MS)
@@ -397,6 +428,7 @@ class AudioStreamingService : Service() {
         const val EXTRA_STATUS_STREAMING = "extra_status_streaming"
         const val EXTRA_STATUS_PACKETS_PER_SECOND = "extra_status_packets_per_second"
         const val EXTRA_STATUS_DSP_SUMMARY = "extra_status_dsp_summary"
+        const val EXTRA_STATUS_ERROR = "extra_status_error"
 
         private const val CHANNEL_ID = "audio_streaming_channel"
         private const val NOTIFICATION_ID = 2201

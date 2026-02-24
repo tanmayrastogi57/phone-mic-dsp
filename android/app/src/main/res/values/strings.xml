@@ -5,6 +5,7 @@
     <string name="port_hint">UDP port</string>
     <string name="pc_ip_required">Enter the PC IP address before starting.</string>
     <string name="invalid_port_message">Enter a valid UDP port (1-65535).</string>
+    <string name="invalid_ip_message">Enter a valid destination IP address.</string>
     <string name="record_permission_required">Microphone permission is required to start streaming.</string>
     <string name="start_streaming_action">Start Streaming</string>
     <string name="stop_streaming_action">Stop Streaming</string>
@@ -18,6 +19,15 @@
     <string name="dsp_status_pending_summary">effects status pending (implemented in Task 2.4)</string>
     <string name="dsp_status_permission_missing">capture blocked: RECORD_AUDIO permission missing</string>
     <string name="dsp_status_audio_init_failed">capture blocked: AudioRecord initialization failed</string>
+    <string name="dsp_status_invalid_target">capture blocked: invalid destination target</string>
+    <string name="error_permission_missing">Microphone permission is required before streaming can start.</string>
+    <string name="error_invalid_ip">Invalid destination IP. Check the PC tethering IP address.</string>
+    <string name="error_invalid_port">Invalid destination port. Use a value between 1 and 65535.</string>
+    <string name="error_audio_record_init">Unable to initialize microphone capture on this device.</string>
+    <string name="error_udp_socket_init">Unable to create UDP socket for streaming.</string>
+    <string name="error_opus_encoder_init">Unable to initialize Opus encoder.</string>
+    <string name="error_capture_illegal_state">Audio pipeline entered an invalid state and stopped.</string>
+    <string name="error_capture_loop_failure">Streaming failed unexpectedly. Check connection and retry.</string>
     <string name="dsp_effect_enabled">enabled</string>
     <string name="dsp_effect_disabled">disabled</string>
     <string name="dsp_effect_unavailable">unavailable</string>

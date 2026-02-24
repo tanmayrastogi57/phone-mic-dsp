@@ -170,10 +170,10 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** Windows receiver plays decoded voice from Android.
 
 ### 2.7 Ensure clean lifecycle + stop behavior
-- [ ] Stop button stops AudioRecord and encoder
-- [ ] Service stops networking threads cleanly
-- [ ] Handle permissions denial gracefully
-- [ ] Handle invalid IP/port with clear error
+- [x] Stop button stops AudioRecord and encoder
+- [x] Service stops networking threads cleanly
+- [x] Handle permissions denial gracefully
+- [x] Handle invalid IP/port with clear error
 
 **Done when:** Start/Stop works repeatedly without crashes.
 
