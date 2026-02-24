@@ -150,8 +150,8 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** capture runs and logs DSP effect status.
 
 ### 2.5 Implement UDP sender (PCM debug mode first)
-- [ ] Implement UDP socket to destination IP:port
-- [ ] Read PCM frames from AudioRecord and send raw PCM packets (debug-only)
+- [x] Implement UDP socket to destination IP:port
+- [x] Read PCM frames from AudioRecord and send raw PCM packets (debug-only)
 
 **Done when:** Windows receiver in raw mode can play Android PCM (debug milestone).
 

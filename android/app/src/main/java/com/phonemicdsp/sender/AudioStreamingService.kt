@@ -22,6 +22,11 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.SocketException
+import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AudioStreamingService : Service() {
@@ -164,10 +169,27 @@ class AudioStreamingService : Service() {
         val frameBuffer = ShortArray(FRAME_SIZE_SAMPLES)
         var framesSinceLastTick = 0
         var lastTickTime = System.currentTimeMillis()
+        val destinationAddress = resolveDestinationAddress() ?: run {
+            captureActive.set(false)
+            isStreaming = false
+            return
+        }
+
+        val udpSocket = try {
+            DatagramSocket()
+        } catch (socketException: SocketException) {
+            Log.e(TAG, "Failed to create UDP socket.", socketException)
+            captureActive.set(false)
+            isStreaming = false
+            return
+        }
+
+        val pcmPacketBuffer = ByteArray(FRAME_SIZE_SAMPLES * BYTES_PER_SAMPLE)
 
         try {
             localAudioRecord.startRecording()
             Log.i(TAG, "AudioRecord started: source=VOICE_COMMUNICATION, sampleRate=$SAMPLE_RATE, frameSamples=$FRAME_SIZE_SAMPLES")
+            Log.i(TAG, "UDP PCM debug sender started: target=${destinationAddress.hostAddress}:$destinationPort")
 
             while (captureActive.get()) {
                 val samplesRead = localAudioRecord.read(frameBuffer, 0, frameBuffer.size)
@@ -175,6 +197,11 @@ class AudioStreamingService : Service() {
                     Log.w(TAG, "AudioRecord read returned $samplesRead")
                     continue
                 }
+
+                val packetSizeBytes = samplesRead * BYTES_PER_SAMPLE
+                convertPcmToLittleEndian(frameBuffer, samplesRead, pcmPacketBuffer)
+                val packet = DatagramPacket(pcmPacketBuffer, packetSizeBytes, destinationAddress, destinationPort)
+                udpSocket.send(packet)
 
                 framesSinceLastTick++
                 val now = System.currentTimeMillis()
@@ -186,13 +213,33 @@ class AudioStreamingService : Service() {
             }
         } catch (exception: IllegalStateException) {
             Log.e(TAG, "Capture loop failed with IllegalStateException", exception)
+        } catch (exception: Exception) {
+            Log.e(TAG, "Capture loop failed while sending UDP PCM.", exception)
         } finally {
+            udpSocket.close()
             try {
                 localAudioRecord.stop()
             } catch (stopException: IllegalStateException) {
                 Log.w(TAG, "AudioRecord stop failed", stopException)
             }
             Log.i(TAG, "Capture loop stopped.")
+        }
+    }
+
+    private fun resolveDestinationAddress(): InetAddress? {
+        return try {
+            InetAddress.getByName(destinationIp)
+        } catch (exception: UnknownHostException) {
+            Log.e(TAG, "Unable to resolve destination IP: $destinationIp", exception)
+            null
+        }
+    }
+
+    private fun convertPcmToLittleEndian(source: ShortArray, samplesRead: Int, target: ByteArray) {
+        for (index in 0 until samplesRead) {
+            val sample = source[index].toInt()
+            target[index * BYTES_PER_SAMPLE] = (sample and 0xFF).toByte()
+            target[index * BYTES_PER_SAMPLE + 1] = ((sample ushr 8) and 0xFF).toByte()
         }
     }
 
