@@ -1,14 +1,17 @@
 package com.phonemicdsp.sender
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.textfield.TextInputEditText
@@ -19,6 +22,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var streamingStatusText: TextView
     private lateinit var packetRateText: TextView
     private lateinit var dspStatusText: TextView
+
+    private val requestRecordAudioPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                Toast.makeText(this, R.string.record_permission_required, Toast.LENGTH_SHORT).show()
+            }
+        }
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -67,6 +77,11 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            if (!hasRecordAudioPermission()) {
+                requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                return@setOnClickListener
+            }
+
             sharedPreferences.edit()
                 .putString(PREF_KEY_PC_IP, destinationIp)
                 .putInt(PREF_KEY_PORT, destinationPort)
@@ -110,6 +125,10 @@ class MainActivity : AppCompatActivity() {
 
         packetRateText.text = getString(R.string.packets_per_second_format, packetsPerSecond)
         dspStatusText.text = getString(R.string.dsp_status_format, dspSummary)
+    }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
     companion object {
