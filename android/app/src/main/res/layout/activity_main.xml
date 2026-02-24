@@ -90,6 +90,36 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/microphoneSpinner" />
 
+        <TextView
+            android:id="@+id/audioSourceLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/audio_source_mode_label"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/refreshMicsButton" />
+
+        <Spinner
+            android:id="@+id/audioSourceSpinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/audioSourceLabel" />
+
+        <TextView
+            android:id="@+id/audioSourceHelpText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/audio_source_mode_help"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/audioSourceSpinner" />
+
         <Button
             android:id="@+id/startServiceButton"
             android:layout_width="0dp"
@@ -98,7 +128,7 @@
             android:text="@string/start_streaming_action"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/refreshMicsButton" />
+            app:layout_constraintTop_toBottomOf="@id/audioSourceHelpText" />
 
         <Button
             android:id="@+id/stopServiceButton"

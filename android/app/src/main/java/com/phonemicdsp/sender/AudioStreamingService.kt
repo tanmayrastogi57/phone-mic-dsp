@@ -59,6 +59,8 @@ class AudioStreamingService : Service() {
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
     private var selectedMicDeviceId: Int = DEVICE_ID_DEFAULT
     private var preferredMicDirection: Int = AudioRecord.MIC_DIRECTION_UNSPECIFIED
+    private var selectedAudioSourceMode: AudioSourceMode = AudioSourceMode.VOICE_COMMUNICATION
+    private val pipelineSwitchLock = Any()
 
     override fun onCreate() {
         super.onCreate()
@@ -70,6 +72,9 @@ class AudioStreamingService : Service() {
         val sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         selectedMicDeviceId = sharedPreferences.getInt(PREF_KEY_MIC_DEVICE_ID, DEVICE_ID_DEFAULT)
         preferredMicDirection = sharedPreferences.getInt(PREF_KEY_MIC_DIRECTION, AudioRecord.MIC_DIRECTION_UNSPECIFIED)
+        selectedAudioSourceMode = AudioSourceMode.fromStored(
+            sharedPreferences.getString(PREF_KEY_AUDIO_SOURCE_MODE, AudioSourceMode.VOICE_COMMUNICATION.name)
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -82,6 +87,19 @@ class AudioStreamingService : Service() {
                 persistMicSelection()
                 applyMicSelectionToActiveRecord()
                 sendStatusUpdate()
+            }
+            ACTION_SELECT_AUDIO_SOURCE -> {
+                val modeName = intent.getStringExtra(EXTRA_AUDIO_SOURCE_MODE)
+                val requestedMode = AudioSourceMode.fromStored(modeName)
+                val previousMode = selectedAudioSourceMode
+                selectedAudioSourceMode = requestedMode
+                persistAudioSourceMode()
+                Log.i(TAG, "Audio source mode requested: ${requestedMode.name} (constant=${requestedMode.audioSource})")
+                if (captureActive.get() && requestedMode != previousMode) {
+                    restartCaptureForAudioSourceChange(requestedMode)
+                } else {
+                    sendStatusUpdate()
+                }
             }
             ACTION_START,
             null -> {
@@ -123,6 +141,7 @@ class AudioStreamingService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startCapturePipeline() {
+        synchronized(pipelineSwitchLock) {
         if (captureActive.get()) {
             Log.d(TAG, "Capture pipeline already running.")
             return
@@ -164,8 +183,9 @@ class AudioStreamingService : Service() {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         Log.i(TAG, "AudioManager mode set to MODE_IN_COMMUNICATION (was $previousAudioMode)")
 
+        val audioSourceConstant = selectedAudioSourceMode.audioSource
         val localAudioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            audioSourceConstant,
             SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
@@ -187,10 +207,11 @@ class AudioStreamingService : Service() {
         applyMicSelection(localAudioRecord)
 
         val audioSessionId = localAudioRecord.audioSessionId
-        val aecStatus = enableAcousticEchoCanceler(audioSessionId)
+        val aecStatus = enableAcousticEchoCanceler(audioSessionId, selectedAudioSourceMode)
         val nsStatus = enableNoiseSuppressor(audioSessionId)
         val agcStatus = enableAutomaticGainControl(audioSessionId)
         currentDspSummary = getString(R.string.dsp_status_effect_summary_format, aecStatus, nsStatus, agcStatus)
+        currentDspSummary = "${selectedAudioSourceMode.name} | $currentDspSummary"
         Log.i(TAG, "DSP effect status: $currentDspSummary")
 
         captureActive.set(true)
@@ -201,6 +222,7 @@ class AudioStreamingService : Service() {
 
         captureThread = Thread({ captureLoop(localAudioRecord, validatedEndpoint.address) }, "audio-capture-thread").also { it.start() }
         statusThread = Thread({ statusLoop() }, "audio-status-thread").also { it.start() }
+        }
     }
 
     private fun captureLoop(localAudioRecord: AudioRecord, destinationAddress: InetAddress) {
@@ -235,7 +257,7 @@ class AudioStreamingService : Service() {
 
         try {
             localAudioRecord.startRecording()
-            Log.i(TAG, "AudioRecord started: source=VOICE_COMMUNICATION, sampleRate=$SAMPLE_RATE, frameSamples=$FRAME_SIZE_SAMPLES")
+            Log.i(TAG, "AudioRecord started: mode=${selectedAudioSourceMode.name}, source=${selectedAudioSourceMode.audioSource}, sampleRate=$SAMPLE_RATE, frameSamples=$FRAME_SIZE_SAMPLES")
             Log.i(TAG, "UDP Opus sender started: target=${destinationAddress.hostAddress}:$destinationPort")
 
             while (captureActive.get()) {
@@ -385,6 +407,7 @@ class AudioStreamingService : Service() {
     }
 
     private fun stopCapturePipeline() {
+        synchronized(pipelineSwitchLock) {
         captureActive.set(false)
 
         runCatching { audioRecord?.stop() }
@@ -419,19 +442,34 @@ class AudioStreamingService : Service() {
         lastMeasuredFramesPerSecond = 0
         routingWarningMessage = null
         Log.i(TAG, "Capture pipeline released. AudioManager mode restored to $previousAudioMode")
+        }
     }
 
-    private fun enableAcousticEchoCanceler(sessionId: Int): String {
+    private fun restartCaptureForAudioSourceChange(newMode: AudioSourceMode) {
+        Log.i(TAG, "Hot-switching audio source mode to ${newMode.name} (${newMode.audioSource})")
+        stopCapturePipeline()
+        startCapturePipeline()
+    }
+
+    private fun enableAcousticEchoCanceler(sessionId: Int, mode: AudioSourceMode): String {
         if (!AcousticEchoCanceler.isAvailable()) {
             Log.w(TAG, "AcousticEchoCanceler unavailable on this device.")
             return getString(R.string.dsp_effect_unavailable)
         }
 
-        acousticEchoCanceler = AcousticEchoCanceler.create(sessionId)
-        val enabled = acousticEchoCanceler?.let {
-            it.enabled = true
-            it.enabled
-        } ?: false
+        val enabled = runCatching {
+            acousticEchoCanceler = AcousticEchoCanceler.create(sessionId)
+            acousticEchoCanceler?.let {
+                it.enabled = true
+                it.enabled
+            } ?: false
+        }.onFailure {
+            Log.w(TAG, "AcousticEchoCanceler failed to initialize for mode=${mode.name}", it)
+        }.getOrDefault(false)
+
+        if (mode == AudioSourceMode.CAMCORDER) {
+            Log.i(TAG, "CAMCORDER mode selected; AEC is best-effort and may be ineffective on some OEMs.")
+        }
 
         return if (enabled) getString(R.string.dsp_effect_enabled) else getString(R.string.dsp_effect_disabled)
     }
@@ -515,12 +553,14 @@ class AudioStreamingService : Service() {
         const val ACTION_STOP = "com.phonemicdsp.sender.action.STOP_STREAMING"
         const val ACTION_QUERY_STATUS = "com.phonemicdsp.sender.action.QUERY_STATUS"
         const val ACTION_SELECT_MIC = "com.phonemicdsp.sender.action.SELECT_MIC"
+        const val ACTION_SELECT_AUDIO_SOURCE = "com.phonemicdsp.sender.action.SELECT_AUDIO_SOURCE"
         const val ACTION_STATUS_UPDATE = "com.phonemicdsp.sender.action.STATUS_UPDATE"
 
         const val EXTRA_DESTINATION_IP = "extra_destination_ip"
         const val EXTRA_DESTINATION_PORT = "extra_destination_port"
         const val EXTRA_MIC_DEVICE_ID = "extra_mic_device_id"
         const val EXTRA_MIC_DIRECTION = "extra_mic_direction"
+        const val EXTRA_AUDIO_SOURCE_MODE = "extra_audio_source_mode"
         const val EXTRA_STATUS_STREAMING = "extra_status_streaming"
         const val EXTRA_STATUS_PACKETS_PER_SECOND = "extra_status_packets_per_second"
         const val EXTRA_STATUS_DSP_SUMMARY = "extra_status_dsp_summary"
@@ -536,6 +576,7 @@ class AudioStreamingService : Service() {
         private const val PREFS_NAME = "phone_mic_sender_prefs"
         private const val PREF_KEY_MIC_DEVICE_ID = "mic_device_id"
         private const val PREF_KEY_MIC_DIRECTION = "mic_direction"
+        private const val PREF_KEY_AUDIO_SOURCE_MODE = "audio_source_mode"
 
         private const val SAMPLE_RATE = 48_000
         private const val CHANNEL_COUNT = 1
@@ -569,6 +610,19 @@ class AudioStreamingService : Service() {
                 putExtra(EXTRA_MIC_DEVICE_ID, deviceId)
                 putExtra(EXTRA_MIC_DIRECTION, direction)
             }
+
+        fun selectAudioSourceIntent(context: Context, mode: AudioSourceMode): Intent =
+            Intent(context, AudioStreamingService::class.java).apply {
+                action = ACTION_SELECT_AUDIO_SOURCE
+                putExtra(EXTRA_AUDIO_SOURCE_MODE, mode.name)
+            }
+    }
+
+    private fun persistAudioSourceMode() {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREF_KEY_AUDIO_SOURCE_MODE, selectedAudioSourceMode.name)
+            .apply()
     }
 }
 

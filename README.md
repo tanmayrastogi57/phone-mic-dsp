@@ -61,3 +61,11 @@ ipconfig
 - You can switch microphones while streaming; Android will apply the preferred device to the active recorder without changing Opus, UDP, or Windows receiver behavior.
 - If routing is not honored by the phone/OS, the app shows a non-blocking warning and continues with the system-default path.
 - On older/limited Android builds where enumeration/routing support is unavailable, the app falls back to **Default microphone (system)**.
+
+## Audio Source Mode (Android)
+- Use **Audio Source Mode** to control how Android tunes capture gain/routing:
+  - **VOICE_COMMUNICATION** (default): best DSP for near-mouth speech (AEC/NS/AGC best-effort)
+  - **VOICE_RECOGNITION**: often better for medium-distance speech pickup
+  - **CAMCORDER**: closest to video-recording mic/orientation behavior; can improve low volume on some devices
+- You can switch modes while streaming. The app performs a short hot restart of `AudioRecord` (brief glitch expected) while keeping Opus/UDP protocol unchanged.
+- OEM audio routing differs by phone model/firmware. **CAMCORDER is best-effort** and may not map to the same physical mic on every device.

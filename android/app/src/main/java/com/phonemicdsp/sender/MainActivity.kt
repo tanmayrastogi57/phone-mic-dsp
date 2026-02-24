@@ -33,11 +33,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var activeMicText: TextView
     private lateinit var micRoutingStatusText: TextView
     private lateinit var microphoneSpinner: Spinner
+    private lateinit var audioSourceSpinner: Spinner
     private lateinit var microphoneAdapter: ArrayAdapter<String>
+    private lateinit var audioSourceAdapter: ArrayAdapter<String>
     private lateinit var audioManager: AudioManager
 
     private var lastServiceError: String? = null
     private var microphoneOptions: List<MicrophoneOption> = emptyList()
+    private var audioSourceOptions: List<AudioSourceMode> = emptyList()
 
     private val requestRecordAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         activeMicText = findViewById(R.id.activeMicText)
         micRoutingStatusText = findViewById(R.id.micRoutingStatusText)
         microphoneSpinner = findViewById(R.id.microphoneSpinner)
+        audioSourceSpinner = findViewById(R.id.audioSourceSpinner)
 
         val startButton = findViewById<Button>(R.id.startServiceButton)
         val stopButton = findViewById<Button>(R.id.stopServiceButton)
@@ -94,11 +98,20 @@ class MainActivity : AppCompatActivity() {
         microphoneAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         microphoneSpinner.adapter = microphoneAdapter
 
+        audioSourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, mutableListOf())
+        audioSourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        audioSourceSpinner.adapter = audioSourceAdapter
+
         val sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         pcIpInput.setText(sharedPreferences.getString(PREF_KEY_PC_IP, ""))
         portInput.setText(sharedPreferences.getInt(PREF_KEY_PORT, DEFAULT_PORT).toString())
 
         val restoredMicId = sharedPreferences.getInt(PREF_KEY_MIC_DEVICE_ID, DEVICE_ID_DEFAULT)
+        val restoredAudioSourceMode = AudioSourceMode.fromStored(
+            sharedPreferences.getString(PREF_KEY_AUDIO_SOURCE_MODE, AudioSourceMode.VOICE_COMMUNICATION.name)
+        )
+
+        bindAudioSourceOptions(restoredAudioSourceMode)
         refreshMicrophoneList(restoredMicId)
 
         microphoneSpinner.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
@@ -116,6 +129,20 @@ class MainActivity : AppCompatActivity() {
                 activeMicText.text = getString(R.string.active_mic_format, selectedOption.displayName)
 
                 startService(AudioStreamingService.selectMicIntent(this@MainActivity, selectedOption.deviceId, selectedOption.direction))
+            }
+
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        })
+
+        audioSourceSpinner.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (position !in audioSourceOptions.indices) {
+                    return
+                }
+
+                val selectedMode = audioSourceOptions[position]
+                sharedPreferences.edit().putString(PREF_KEY_AUDIO_SOURCE_MODE, selectedMode.name).apply()
+                startService(AudioStreamingService.selectAudioSourceIntent(this@MainActivity, selectedMode))
             }
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -171,6 +198,36 @@ class MainActivity : AppCompatActivity() {
 
         stopButton.setOnClickListener {
             startService(AudioStreamingService.stopIntent(this))
+        }
+    }
+
+    private fun bindAudioSourceOptions(preferredMode: AudioSourceMode) {
+        audioSourceOptions = AudioSourceMode.supportedModes()
+        if (audioSourceOptions.isEmpty()) {
+            val message = getString(R.string.audio_source_mode_unavailable)
+            audioSourceAdapter.clear()
+            audioSourceAdapter.add(message)
+            audioSourceAdapter.notifyDataSetChanged()
+            audioSourceSpinner.isEnabled = false
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels = audioSourceOptions.map { getAudioSourceLabel(it) }
+        audioSourceAdapter.clear()
+        audioSourceAdapter.addAll(labels)
+        audioSourceAdapter.notifyDataSetChanged()
+        audioSourceSpinner.isEnabled = true
+
+        val selectedIndex = audioSourceOptions.indexOf(preferredMode).takeIf { it >= 0 } ?: 0
+        audioSourceSpinner.setSelection(selectedIndex, false)
+    }
+
+    private fun getAudioSourceLabel(mode: AudioSourceMode): String {
+        return when (mode) {
+            AudioSourceMode.VOICE_COMMUNICATION -> getString(R.string.audio_source_mode_voice_communication)
+            AudioSourceMode.VOICE_RECOGNITION -> getString(R.string.audio_source_mode_voice_recognition)
+            AudioSourceMode.CAMCORDER -> getString(R.string.audio_source_mode_camcorder)
         }
     }
 
@@ -323,6 +380,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_KEY_PORT = "port"
         private const val PREF_KEY_MIC_DEVICE_ID = "mic_device_id"
         private const val PREF_KEY_MIC_DIRECTION = "mic_direction"
+        private const val PREF_KEY_AUDIO_SOURCE_MODE = "audio_source_mode"
         private const val DEFAULT_PORT = 5555
         private const val DEVICE_ID_DEFAULT = -1
         private const val TAG = "MainActivity"
