@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import java.net.InetAddress
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -22,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var streamingStatusText: TextView
     private lateinit var packetRateText: TextView
     private lateinit var dspStatusText: TextView
+    private var lastServiceError: String? = null
 
     private val requestRecordAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -40,8 +42,15 @@ class MainActivity : AppCompatActivity() {
             val packetsPerSecond = intent.getIntExtra(AudioStreamingService.EXTRA_STATUS_PACKETS_PER_SECOND, 0)
             val dspSummary = intent.getStringExtra(AudioStreamingService.EXTRA_STATUS_DSP_SUMMARY)
                 ?: getString(R.string.dsp_status_placeholder)
+            val serviceError = intent.getStringExtra(AudioStreamingService.EXTRA_STATUS_ERROR)
 
             updateStatusViews(isStreaming, packetsPerSecond, dspSummary)
+            if (!serviceError.isNullOrBlank() && serviceError != lastServiceError) {
+                lastServiceError = serviceError
+                Toast.makeText(this@MainActivity, serviceError, Toast.LENGTH_SHORT).show()
+            } else if (serviceError.isNullOrBlank()) {
+                lastServiceError = null
+            }
         }
     }
 
@@ -74,6 +83,11 @@ class MainActivity : AppCompatActivity() {
             val destinationPort = portInput.text?.toString()?.toIntOrNull()
             if (destinationPort == null || destinationPort !in 1..65535) {
                 Toast.makeText(this, R.string.invalid_port_message, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (!isValidIpAddress(destinationIp)) {
+                Toast.makeText(this, R.string.invalid_ip_message, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -130,6 +144,10 @@ class MainActivity : AppCompatActivity() {
     private fun hasRecordAudioPermission(): Boolean {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
+
+    private fun isValidIpAddress(value: String): Boolean = runCatching {
+        InetAddress.getByName(value)
+    }.isSuccess
 
     companion object {
         private const val PREFS_NAME = "phone_mic_sender_prefs"
