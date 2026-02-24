@@ -7,29 +7,29 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 ## Phase 0 — Project Setup (Repo + Standards)
 
 ### 0.1 Create repository structure
-- [ ] Create folders:
-  - [ ] `/android/`
-  - [ ] `/windows/`
-  - [ ] `/docs/`
-- [ ] Add baseline docs:
-  - [ ] `README.md`
-  - [ ] `AGENT.md`
-  - [ ] `ARCHITECTURE.md`
-  - [ ] `SPEC.md`
-  - [ ] `requirements.md`
-  - [ ] `TASKS.md`
-- [ ] Add license placeholder:
-  - [ ] `LICENSE` (MIT or Apache-2.0)
+- [x] Create folders:
+  - [x] `/android/`
+  - [x] `/windows/`
+  - [x] `/docs/`
+- [x] Add baseline docs:
+  - [x] `README.md`
+  - [x] `AGENT.md`
+  - [x] `ARCHITECTURE.md`
+  - [x] `SPEC.md`
+  - [x] `requirements.md`
+  - [x] `TASKS.md`
+- [x] Add license placeholder:
+  - [x] `LICENSE` (MIT or Apache-2.0)
 
 **Done when:** repo tree matches plan and markdown docs exist.
 
 ### 0.2 Tooling and coding standards
 - [ ] Decide/lock:
-  - [ ] .NET version: **.NET 8**
-  - [ ] Android: minSdk **24**, targetSdk **34**
-- [ ] Add `.gitignore` for Android + Visual Studio
-- [ ] Add `CONTRIBUTING.md` (minimal: build/run steps + formatting)
-- [ ] Add `CHANGELOG.md` (empty but present)
+  - [x] .NET version: **.NET 8**
+  - [x] Android: minSdk **24**, targetSdk **34**
+- [x] Add `.gitignore` for Android + Visual Studio
+- [x] Add `CONTRIBUTING.md` (minimal: build/run steps + formatting)
+- [x] Add `CHANGELOG.md` (empty but present)
 
 **Done when:** clean first commit builds skeleton projects.
 
@@ -40,58 +40,58 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Goal: Windows receiver can play any decoded PCM into VB-CABLE reliably.
 
 ### 1.1 Create Windows solution and console app
-- [ ] Create `windows/PhoneMicReceiver.sln`
-- [ ] Create console project `windows/PhoneMicReceiver/PhoneMicReceiver.csproj`
-- [ ] Add NuGet dependencies:
-  - [ ] `NAudio`
-  - [ ] `Concentus`
+- [x] Create `windows/PhoneMicReceiver.sln`
+- [x] Create console project `windows/PhoneMicReceiver/PhoneMicReceiver.csproj`
+- [x] Add NuGet dependencies:
+  - [x] `NAudio`
+  - [x] `Concentus`
 
 **Done when:** `dotnet build` succeeds.
 
 ### 1.2 Implement audio output device selection
-- [ ] Enumerate render devices (MMDeviceEnumerator)
-- [ ] Select device by substring (default `"CABLE Input"`)
-- [ ] If not found:
-  - [ ] Print all render devices
-  - [ ] Exit with non-zero code
+- [x] Enumerate render devices (MMDeviceEnumerator)
+- [x] Select device by substring (default `"CABLE Input"`)
+- [x] If not found:
+  - [x] Print all render devices
+  - [x] Exit with non-zero code
 
 **Done when:** running app prints selected device or lists devices.
 
 ### 1.3 Implement WASAPI output with buffering
-- [ ] Use `WasapiOut` (shared mode)
-- [ ] Create `BufferedWaveProvider`
-- [ ] Add PCM write helper to push bytes into buffer
-- [ ] Add config knobs (CLI or config file):
-  - [ ] output latency ms (default 50)
-  - [ ] buffer length ms (default 500)
+- [x] Use `WasapiOut` (shared mode)
+- [x] Create `BufferedWaveProvider`
+- [x] Add PCM write helper to push bytes into buffer
+- [x] Add config knobs (CLI or config file):
+  - [x] output latency ms (default 50)
+  - [x] buffer length ms (default 500)
 
 **Done when:** app runs and plays a generated test tone (optional) or accepts injected PCM.
 
 ### 1.4 Implement UDP receiver loop (no Opus yet)
-- [ ] Listen UDP on port (default 5555)
-- [ ] Receive datagrams
-- [ ] For test mode, interpret payload as raw PCM and push to buffer (debug-only)
+- [x] Listen UDP on port (default 5555)
+- [x] Receive datagrams
+- [x] For test mode, interpret payload as raw PCM and push to buffer (debug-only)
 
 **Done when:** can send dummy PCM packets and hear audio through VB-CABLE.
 
 ### 1.5 Implement Opus decode path
-- [ ] Replace raw PCM mode with Opus mode (default)
-- [ ] Use Concentus `OpusDecoder`:
-  - [ ] Sample rate 48000
-  - [ ] Channels 1
-  - [ ] Decode each datagram as a single Opus packet
-- [ ] Convert decoded `short[]` PCM to bytes and push to buffer
-- [ ] Handle decode errors:
-  - [ ] increment counter
-  - [ ] drop packet and continue
+- [x] Replace raw PCM mode with Opus mode (default)
+- [x] Use Concentus `OpusDecoder`:
+  - [x] Sample rate 48000
+  - [x] Channels 1
+  - [x] Decode each datagram as a single Opus packet
+- [x] Convert decoded `short[]` PCM to bytes and push to buffer
+- [x] Handle decode errors:
+  - [x] increment counter
+  - [x] drop packet and continue
 
 **Done when:** receiver accepts Opus packets and plays them to VB-CABLE.
 
 ### 1.6 Add receiver diagnostics/logging
-- [ ] Log startup config: port, device, latency, buffer
-- [ ] Packets/sec counter (rolling every 1s)
-- [ ] Decode error counter
-- [ ] Buffer overflow/underrun logs (best-effort)
+- [x] Log startup config: port, device, latency, buffer
+- [x] Packets/sec counter (rolling every 1s)
+- [x] Decode error counter
+- [x] Buffer overflow/underrun logs (best-effort)
 
 **Done when:** logs are useful for debugging.
 

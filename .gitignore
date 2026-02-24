@@ -1,0 +1,53 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+
+# .NET / Visual Studio
+bin/
+obj/
+.vs/
+[Bb]uild/
+[Ll]og/
+TestResults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Android / Gradle
+.gradle/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.keystore
+*.jks
+android/.cxx/
+android/build/
+android/**/build/
+
+# Kotlin/Java
+*.iml
+out/
+
+# Env
+.env
+.env.*

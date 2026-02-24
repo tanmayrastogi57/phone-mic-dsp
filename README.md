@@ -28,7 +28,7 @@ Discord on Android sounds clean because Android uses a voice-communication audio
 - Discord Desktop app
 
 ### Android
-- Android 7.0+ (minSdk 24 recommended)
+- Android 7.0+ (minSdk 24, targetSdk 34)
 - USB cable
 - **USB tethering** support
 
