@@ -156,16 +156,16 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** Windows receiver in raw mode can play Android PCM (debug milestone).
 
 ### 2.6 Add Opus encoder on Android (MVP)
-- [ ] Choose Opus encoding approach for MVP:
-  - [ ] **libopus via JNI wrapper** (recommended for Android)
-- [ ] Implement encoder settings:
-  - [ ] 48kHz, mono
-  - [ ] 20ms frames (960 samples)
-  - [ ] bitrate 48 kbps
-  - [ ] complexity 8
-  - [ ] FEC ON
-- [ ] Encode each 20ms PCM frame into an Opus packet
-- [ ] Send one Opus packet per UDP datagram
+- [x] Choose Opus encoding approach for MVP:
+  - [x] **Android MediaCodec Opus encoder** (MVP implementation in service)
+- [x] Implement encoder settings:
+  - [x] 48kHz, mono
+  - [x] 20ms frames (960 samples)
+  - [x] bitrate 48 kbps
+  - [x] complexity 8
+  - [x] FEC ON
+- [x] Encode each 20ms PCM frame into an Opus packet
+- [x] Send one Opus packet per UDP datagram
 
 **Done when:** Windows receiver plays decoded voice from Android.
 

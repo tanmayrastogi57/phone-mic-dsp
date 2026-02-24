@@ -12,7 +12,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.MediaCodec
 import android.media.AudioRecord
+import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
@@ -44,6 +46,7 @@ class AudioStreamingService : Service() {
     private var acousticEchoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
     private var automaticGainControl: AutomaticGainControl? = null
+    private var opusEncoder: OpusFrameEncoder? = null
 
     private lateinit var audioManager: AudioManager
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
@@ -184,12 +187,22 @@ class AudioStreamingService : Service() {
             return
         }
 
-        val pcmPacketBuffer = ByteArray(FRAME_SIZE_SAMPLES * BYTES_PER_SAMPLE)
+        val localOpusEncoder = try {
+            OpusFrameEncoder(SAMPLE_RATE, CHANNEL_COUNT, BITRATE_BPS, OPUS_COMPLEXITY, OPUS_FEC_ENABLED)
+        } catch (exception: Exception) {
+            Log.e(TAG, "Failed to initialize Opus encoder.", exception)
+            captureActive.set(false)
+            isStreaming = false
+            sendStatusUpdate()
+            udpSocket.close()
+            return
+        }
+        opusEncoder = localOpusEncoder
 
         try {
             localAudioRecord.startRecording()
             Log.i(TAG, "AudioRecord started: source=VOICE_COMMUNICATION, sampleRate=$SAMPLE_RATE, frameSamples=$FRAME_SIZE_SAMPLES")
-            Log.i(TAG, "UDP PCM debug sender started: target=${destinationAddress.hostAddress}:$destinationPort")
+            Log.i(TAG, "UDP Opus sender started: target=${destinationAddress.hostAddress}:$destinationPort")
 
             while (captureActive.get()) {
                 val samplesRead = localAudioRecord.read(frameBuffer, 0, frameBuffer.size)
@@ -198,9 +211,13 @@ class AudioStreamingService : Service() {
                     continue
                 }
 
-                val packetSizeBytes = samplesRead * BYTES_PER_SAMPLE
-                convertPcmToLittleEndian(frameBuffer, samplesRead, pcmPacketBuffer)
-                val packet = DatagramPacket(pcmPacketBuffer, packetSizeBytes, destinationAddress, destinationPort)
+                if (samplesRead != FRAME_SIZE_SAMPLES) {
+                    Log.w(TAG, "Expected $FRAME_SIZE_SAMPLES samples per frame, got $samplesRead; dropping partial frame.")
+                    continue
+                }
+
+                val opusPayload = localOpusEncoder.encodeFrame(frameBuffer) ?: continue
+                val packet = DatagramPacket(opusPayload, opusPayload.size, destinationAddress, destinationPort)
                 udpSocket.send(packet)
 
                 framesSinceLastTick++
@@ -214,8 +231,10 @@ class AudioStreamingService : Service() {
         } catch (exception: IllegalStateException) {
             Log.e(TAG, "Capture loop failed with IllegalStateException", exception)
         } catch (exception: Exception) {
-            Log.e(TAG, "Capture loop failed while sending UDP PCM.", exception)
+            Log.e(TAG, "Capture loop failed while sending UDP Opus.", exception)
         } finally {
+            localOpusEncoder.release()
+            opusEncoder = null
             udpSocket.close()
             try {
                 localAudioRecord.stop()
@@ -232,14 +251,6 @@ class AudioStreamingService : Service() {
         } catch (exception: UnknownHostException) {
             Log.e(TAG, "Unable to resolve destination IP: $destinationIp", exception)
             null
-        }
-    }
-
-    private fun convertPcmToLittleEndian(source: ShortArray, samplesRead: Int, target: ByteArray) {
-        for (index in 0 until samplesRead) {
-            val sample = source[index].toInt()
-            target[index * BYTES_PER_SAMPLE] = (sample and 0xFF).toByte()
-            target[index * BYTES_PER_SAMPLE + 1] = ((sample ushr 8) and 0xFF).toByte()
         }
     }
 
@@ -273,6 +284,9 @@ class AudioStreamingService : Service() {
 
         automaticGainControl?.release()
         automaticGainControl = null
+
+        opusEncoder?.release()
+        opusEncoder = null
 
         audioRecord?.release()
         audioRecord = null
@@ -390,8 +404,12 @@ class AudioStreamingService : Service() {
         private const val DEFAULT_PORT = 5555
 
         private const val SAMPLE_RATE = 48_000
+        private const val CHANNEL_COUNT = 1
         private const val FRAME_SIZE_SAMPLES = 960
         private const val BYTES_PER_SAMPLE = 2
+        private const val BITRATE_BPS = 48_000
+        private const val OPUS_COMPLEXITY = 8
+        private const val OPUS_FEC_ENABLED = true
         private const val STATS_INTERVAL_MS = 1_000L
         private const val THREAD_JOIN_TIMEOUT_MS = 500L
         private const val TAG = "AudioStreamingService"
@@ -410,5 +428,96 @@ class AudioStreamingService : Service() {
         fun statusQueryIntent(context: Context): Intent = Intent(context, AudioStreamingService::class.java).apply {
             action = ACTION_QUERY_STATUS
         }
+    }
+}
+
+private class OpusFrameEncoder(
+    sampleRate: Int,
+    channelCount: Int,
+    bitrateBps: Int,
+    complexity: Int,
+    enableFec: Boolean
+) {
+    private val codec: MediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
+    private val outputBufferInfo = MediaCodec.BufferInfo()
+    private var released = false
+
+    init {
+        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, sampleRate, channelCount).apply {
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrateBps)
+            setInteger(KEY_OPUS_COMPLEXITY, complexity)
+            setInteger(KEY_OPUS_INBAND_FEC, if (enableFec) 1 else 0)
+        }
+
+        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        codec.start()
+    }
+
+    fun encodeFrame(pcmFrame: ShortArray): ByteArray? {
+        val inputIndex = codec.dequeueInputBuffer(BUFFER_TIMEOUT_US)
+        if (inputIndex < 0) {
+            return null
+        }
+
+        val inputBuffer = codec.getInputBuffer(inputIndex) ?: return null
+        inputBuffer.clear()
+        pcmFrame.forEach { sample ->
+            inputBuffer.put((sample.toInt() and 0xFF).toByte())
+            inputBuffer.put(((sample.toInt() ushr 8) and 0xFF).toByte())
+        }
+
+        codec.queueInputBuffer(
+            inputIndex,
+            0,
+            FRAME_SIZE_BYTES,
+            System.nanoTime() / 1_000,
+            0
+        )
+
+        while (true) {
+            when (val outputIndex = codec.dequeueOutputBuffer(outputBufferInfo, BUFFER_TIMEOUT_US)) {
+                MediaCodec.INFO_TRY_AGAIN_LATER -> return null
+                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> continue
+                else -> {
+                    if (outputIndex < 0) {
+                        return null
+                    }
+
+                    val outputBuffer = codec.getOutputBuffer(outputIndex) ?: run {
+                        codec.releaseOutputBuffer(outputIndex, false)
+                        return null
+                    }
+
+                    if ((outputBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                        codec.releaseOutputBuffer(outputIndex, false)
+                        continue
+                    }
+
+                    val encoded = ByteArray(outputBufferInfo.size)
+                    outputBuffer.position(outputBufferInfo.offset)
+                    outputBuffer.limit(outputBufferInfo.offset + outputBufferInfo.size)
+                    outputBuffer.get(encoded)
+                    codec.releaseOutputBuffer(outputIndex, false)
+                    return encoded
+                }
+            }
+        }
+    }
+
+    fun release() {
+        if (released) {
+            return
+        }
+
+        released = true
+        runCatching { codec.stop() }
+        runCatching { codec.release() }
+    }
+
+    companion object {
+        private const val FRAME_SIZE_BYTES = 960 * 2
+        private const val BUFFER_TIMEOUT_US = 10_000L
+        private const val KEY_OPUS_COMPLEXITY = "complexity"
+        private const val KEY_OPUS_INBAND_FEC = "inband-fec"
     }
 }
