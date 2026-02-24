@@ -136,16 +136,16 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** user can configure target and control streaming.
 
 ### 2.4 Implement Android voice DSP capture pipeline
-- [ ] Set audio mode:
-  - [ ] `AudioManager.mode = MODE_IN_COMMUNICATION`
-- [ ] Create AudioRecord:
-  - [ ] Source: `MediaRecorder.AudioSource.VOICE_COMMUNICATION`
-  - [ ] 48kHz, mono, PCM 16-bit
-- [ ] Best-effort attach effects:
-  - [ ] `AcousticEchoCanceler.create(sessionId)`
-  - [ ] `NoiseSuppressor.create(sessionId)`
-  - [ ] `AutomaticGainControl.create(sessionId)`
-- [ ] Log enabled/available status
+- [x] Set audio mode:
+  - [x] `AudioManager.mode = MODE_IN_COMMUNICATION`
+- [x] Create AudioRecord:
+  - [x] Source: `MediaRecorder.AudioSource.VOICE_COMMUNICATION`
+  - [x] 48kHz, mono, PCM 16-bit
+- [x] Best-effort attach effects:
+  - [x] `AcousticEchoCanceler.create(sessionId)`
+  - [x] `NoiseSuppressor.create(sessionId)`
+  - [x] `AutomaticGainControl.create(sessionId)`
+- [x] Log enabled/available status
 
 **Done when:** capture runs and logs DSP effect status.
 
