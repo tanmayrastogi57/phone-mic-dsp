@@ -122,16 +122,16 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** service runs without being killed quickly.
 
 ### 2.3 Implement UI (minimal)
-- [ ] Fields:
-  - [ ] PC IP address
-  - [ ] UDP port (default 5555)
-- [ ] Buttons:
-  - [ ] Start Streaming
-  - [ ] Stop Streaming
-- [ ] Status area:
-  - [ ] “Streaming: ON/OFF”
-  - [ ] packets/sec or frames/sec
-  - [ ] DSP effects availability summary
+- [x] Fields:
+  - [x] PC IP address
+  - [x] UDP port (default 5555)
+- [x] Buttons:
+  - [x] Start Streaming
+  - [x] Stop Streaming
+- [x] Status area:
+  - [x] “Streaming: ON/OFF”
+  - [x] packets/sec or frames/sec
+  - [x] DSP effects availability summary
 
 **Done when:** user can configure target and control streaming.
 
