@@ -14,6 +14,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.MediaCodec
 import android.media.AudioRecord
+import android.media.AudioDeviceInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -44,6 +45,9 @@ class AudioStreamingService : Service() {
     private var lastMeasuredFramesPerSecond = 0
     private var currentDspSummary: String = ""
     private var lastErrorMessage: String? = null
+    private var activeMicLabel: String = ""
+    private var routingWarningMessage: String? = null
+    private val audioRecordLock = Any()
 
     private var acousticEchoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
@@ -53,18 +57,32 @@ class AudioStreamingService : Service() {
 
     private lateinit var audioManager: AudioManager
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
+    private var selectedMicDeviceId: Int = DEVICE_ID_DEFAULT
+    private var preferredMicDirection: Int = AudioRecord.MIC_DIRECTION_UNSPECIFIED
 
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannel()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         currentDspSummary = getString(R.string.dsp_status_placeholder)
+        activeMicLabel = getString(R.string.default_microphone_label)
+
+        val sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        selectedMicDeviceId = sharedPreferences.getInt(PREF_KEY_MIC_DEVICE_ID, DEVICE_ID_DEFAULT)
+        preferredMicDirection = sharedPreferences.getInt(PREF_KEY_MIC_DIRECTION, AudioRecord.MIC_DIRECTION_UNSPECIFIED)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopServiceSafely()
             ACTION_QUERY_STATUS -> sendStatusUpdate()
+            ACTION_SELECT_MIC -> {
+                selectedMicDeviceId = intent.getIntExtra(EXTRA_MIC_DEVICE_ID, DEVICE_ID_DEFAULT)
+                preferredMicDirection = intent.getIntExtra(EXTRA_MIC_DIRECTION, AudioRecord.MIC_DIRECTION_UNSPECIFIED)
+                persistMicSelection()
+                applyMicSelectionToActiveRecord()
+                sendStatusUpdate()
+            }
             ACTION_START,
             null -> {
                 destinationIp = intent?.getStringExtra(EXTRA_DESTINATION_IP).orEmpty()
@@ -97,6 +115,8 @@ class AudioStreamingService : Service() {
             putExtra(EXTRA_STATUS_PACKETS_PER_SECOND, lastMeasuredFramesPerSecond)
             putExtra(EXTRA_STATUS_DSP_SUMMARY, currentDspSummary)
             putExtra(EXTRA_STATUS_ERROR, lastErrorMessage)
+            putExtra(EXTRA_STATUS_ACTIVE_MIC, activeMicLabel)
+            putExtra(EXTRA_STATUS_ROUTING_WARNING, routingWarningMessage)
         }
         sendBroadcast(statusIntent)
     }
@@ -164,6 +184,7 @@ class AudioStreamingService : Service() {
         }
 
         audioRecord = localAudioRecord
+        applyMicSelection(localAudioRecord)
 
         val audioSessionId = localAudioRecord.audioSessionId
         val aecStatus = enableAcousticEchoCanceler(audioSessionId)
@@ -262,6 +283,77 @@ class AudioStreamingService : Service() {
         }
     }
 
+    private fun applyMicSelectionToActiveRecord() {
+        val currentRecord = synchronized(audioRecordLock) { audioRecord }
+        if (currentRecord == null) {
+            activeMicLabel = getMicLabelForSelection(selectedMicDeviceId)
+            return
+        }
+
+        applyMicSelection(currentRecord)
+    }
+
+    private fun applyMicSelection(record: AudioRecord) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            routingWarningMessage = getString(R.string.mic_unsupported_message)
+            activeMicLabel = getString(R.string.default_microphone_label)
+            return
+        }
+
+        val selectedDevice = resolveSelectedInputDevice()
+        activeMicLabel = selectedDevice?.productName?.toString()?.takeIf { it.isNotBlank() }
+            ?: getMicLabelForSelection(selectedMicDeviceId)
+
+        val preferredDeviceSet = record.setPreferredDevice(selectedDevice)
+        Log.i(TAG, "setPreferredDevice(deviceId=$selectedMicDeviceId, device=${selectedDevice?.id}) result=$preferredDeviceSet")
+
+        val directionResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val result = record.setPreferredMicrophoneDirection(preferredMicDirection)
+            Log.i(TAG, "setPreferredMicrophoneDirection(direction=$preferredMicDirection) result=$result")
+            result
+        } else {
+            true
+        }
+
+        routingWarningMessage = if (!preferredDeviceSet || !directionResult) {
+            getString(R.string.mic_routing_not_supported)
+        } else {
+            null
+        }
+    }
+
+    private fun resolveSelectedInputDevice(): AudioDeviceInfo? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || selectedMicDeviceId == DEVICE_ID_DEFAULT) {
+            return null
+        }
+
+        val inputDevices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).filter { it.isSource }
+        inputDevices.forEach {
+            Log.i(TAG, "Input device discovered: id=${it.id}, name=${it.productName}, type=${it.type}")
+        }
+        return inputDevices.firstOrNull { it.id == selectedMicDeviceId }
+    }
+
+    private fun getMicLabelForSelection(deviceId: Int): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || deviceId == DEVICE_ID_DEFAULT) {
+            return getString(R.string.default_microphone_label)
+        }
+
+        val selected = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .firstOrNull { it.id == deviceId }
+
+        return selected?.productName?.toString()?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.default_microphone_label)
+    }
+
+    private fun persistMicSelection() {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(PREF_KEY_MIC_DEVICE_ID, selectedMicDeviceId)
+            .putInt(PREF_KEY_MIC_DIRECTION, preferredMicDirection)
+            .apply()
+    }
+
     private fun parseDestinationEndpoint(): InetSocketAddress? {
         if (destinationPort !in 1..65535) {
             Log.e(TAG, "Invalid destination port: $destinationPort")
@@ -325,6 +417,7 @@ class AudioStreamingService : Service() {
         audioManager.mode = previousAudioMode
         isStreaming = false
         lastMeasuredFramesPerSecond = 0
+        routingWarningMessage = null
         Log.i(TAG, "Capture pipeline released. AudioManager mode restored to $previousAudioMode")
     }
 
@@ -421,19 +514,28 @@ class AudioStreamingService : Service() {
         const val ACTION_START = "com.phonemicdsp.sender.action.START_STREAMING"
         const val ACTION_STOP = "com.phonemicdsp.sender.action.STOP_STREAMING"
         const val ACTION_QUERY_STATUS = "com.phonemicdsp.sender.action.QUERY_STATUS"
+        const val ACTION_SELECT_MIC = "com.phonemicdsp.sender.action.SELECT_MIC"
         const val ACTION_STATUS_UPDATE = "com.phonemicdsp.sender.action.STATUS_UPDATE"
 
         const val EXTRA_DESTINATION_IP = "extra_destination_ip"
         const val EXTRA_DESTINATION_PORT = "extra_destination_port"
+        const val EXTRA_MIC_DEVICE_ID = "extra_mic_device_id"
+        const val EXTRA_MIC_DIRECTION = "extra_mic_direction"
         const val EXTRA_STATUS_STREAMING = "extra_status_streaming"
         const val EXTRA_STATUS_PACKETS_PER_SECOND = "extra_status_packets_per_second"
         const val EXTRA_STATUS_DSP_SUMMARY = "extra_status_dsp_summary"
         const val EXTRA_STATUS_ERROR = "extra_status_error"
+        const val EXTRA_STATUS_ACTIVE_MIC = "extra_status_active_mic"
+        const val EXTRA_STATUS_ROUTING_WARNING = "extra_status_routing_warning"
 
         private const val CHANNEL_ID = "audio_streaming_channel"
         private const val NOTIFICATION_ID = 2201
         private const val REQUEST_CODE_STOP = 2202
         private const val DEFAULT_PORT = 5555
+        private const val DEVICE_ID_DEFAULT = -1
+        private const val PREFS_NAME = "phone_mic_sender_prefs"
+        private const val PREF_KEY_MIC_DEVICE_ID = "mic_device_id"
+        private const val PREF_KEY_MIC_DIRECTION = "mic_direction"
 
         private const val SAMPLE_RATE = 48_000
         private const val CHANNEL_COUNT = 1
@@ -460,6 +562,13 @@ class AudioStreamingService : Service() {
         fun statusQueryIntent(context: Context): Intent = Intent(context, AudioStreamingService::class.java).apply {
             action = ACTION_QUERY_STATUS
         }
+
+        fun selectMicIntent(context: Context, deviceId: Int, direction: Int): Intent =
+            Intent(context, AudioStreamingService::class.java).apply {
+                action = ACTION_SELECT_MIC
+                putExtra(EXTRA_MIC_DEVICE_ID, deviceId)
+                putExtra(EXTRA_MIC_DIRECTION, direction)
+            }
     }
 }
 

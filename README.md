@@ -53,3 +53,11 @@ This creates a new network adapter on Windows.
 On Windows PowerShell:
 ```powershell
 ipconfig
+```
+
+## Selecting a microphone (Android)
+- On the Android app main screen, use the **Microphone** dropdown to choose from available input devices discovered by Android (`AudioManager.GET_DEVICES_INPUTS`).
+- Tap **Refresh Microphones** after plugging in or removing wired/Bluetooth/USB audio devices.
+- You can switch microphones while streaming; Android will apply the preferred device to the active recorder without changing Opus, UDP, or Windows receiver behavior.
+- If routing is not honored by the phone/OS, the app shows a non-blocking warning and continues with the system-default path.
+- On older/limited Android builds where enumeration/routing support is unavailable, the app falls back to **Default microphone (system)**.
