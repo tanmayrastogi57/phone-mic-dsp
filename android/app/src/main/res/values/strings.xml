@@ -9,6 +9,15 @@
     <string name="record_permission_required">Microphone permission is required to start streaming.</string>
     <string name="start_streaming_action">Start Streaming</string>
     <string name="stop_streaming_action">Stop Streaming</string>
+    <string name="microphone_label">Microphone</string>
+    <string name="refresh_microphones_action">Refresh Microphones</string>
+    <string name="default_microphone_label">Default microphone (system)</string>
+    <string name="microphone_unknown_name">Unknown microphone</string>
+    <string name="active_mic_placeholder">Active mic: Default microphone (system)</string>
+    <string name="active_mic_format">Active mic: %1$s</string>
+    <string name="mic_routing_status_ok">Mic routing: system default</string>
+    <string name="mic_routing_not_supported">Device routing not supported by this phone/OS.</string>
+    <string name="mic_unsupported_message">Microphone device selection is not supported on this Android version.</string>
     <string name="status_header">Status</string>
     <string name="streaming_on">Streaming: ON</string>
     <string name="streaming_off">Streaming: OFF</string>
