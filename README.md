@@ -62,6 +62,13 @@ ipconfig
 - If routing is not honored by the phone/OS, the app shows a non-blocking warning and continues with the system-default path.
 - On older/limited Android builds where enumeration/routing support is unavailable, the app falls back to **Default microphone (system)**.
 
+## Mic Gain (Android)
+- Use the **Mic Gain** slider to apply software amplification before Opus encoding.
+- Range is **1.0x to 8.0x** (default **2.0x**), and changes apply immediately while streaming.
+- Increase gradually: higher gain can improve quiet mic routes, but also amplifies background noise.
+- If the app shows **“Clipping detected — reduce gain”**, lower the slider to reduce distortion.
+- Mic gain is saved on-device and restored automatically on next launch.
+
 ## Audio Source Mode (Android)
 - Use **Audio Source Mode** to control how Android tunes capture gain/routing:
   - **VOICE_COMMUNICATION** (default): best DSP for near-mouth speech (AEC/NS/AGC best-effort)

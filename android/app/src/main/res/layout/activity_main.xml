@@ -120,6 +120,45 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/audioSourceSpinner" />
 
+        <TextView
+            android:id="@+id/micGainLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/mic_gain_label"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            app:layout_constraintEnd_toStartOf="@id/micGainValueText"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/audioSourceHelpText" />
+
+        <TextView
+            android:id="@+id/micGainValueText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/mic_gain_default_value"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            app:layout_constraintBaseline_toBaselineOf="@id/micGainLabel"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <SeekBar
+            android:id="@+id/micGainSeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:max="700"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/micGainLabel" />
+
+        <TextView
+            android:id="@+id/micGainClippingWarningText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/mic_gain_clipping_placeholder"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/micGainSeekBar" />
+
         <Button
             android:id="@+id/startServiceButton"
             android:layout_width="0dp"
@@ -128,7 +167,7 @@
             android:text="@string/start_streaming_action"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/audioSourceHelpText" />
+            app:layout_constraintTop_toBottomOf="@id/micGainClippingWarningText" />
 
         <Button
             android:id="@+id/stopServiceButton"

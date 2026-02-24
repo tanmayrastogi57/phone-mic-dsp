@@ -61,6 +61,8 @@ class AudioStreamingService : Service() {
     private var preferredMicDirection: Int = AudioRecord.MIC_DIRECTION_UNSPECIFIED
     private var selectedAudioSourceMode: AudioSourceMode = AudioSourceMode.VOICE_COMMUNICATION
     private val pipelineSwitchLock = Any()
+    @Volatile private var micGain: Float = DEFAULT_MIC_GAIN
+    @Volatile private var clippingWarningActive: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -75,6 +77,8 @@ class AudioStreamingService : Service() {
         selectedAudioSourceMode = AudioSourceMode.fromStored(
             sharedPreferences.getString(PREF_KEY_AUDIO_SOURCE_MODE, AudioSourceMode.VOICE_COMMUNICATION.name)
         )
+        micGain = sharedPreferences.getInt(PREF_KEY_MIC_GAIN_PERCENT, DEFAULT_MIC_GAIN_PERCENT)
+            .coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT) / MIC_GAIN_PERCENT_SCALE
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,6 +90,14 @@ class AudioStreamingService : Service() {
                 preferredMicDirection = intent.getIntExtra(EXTRA_MIC_DIRECTION, AudioRecord.MIC_DIRECTION_UNSPECIFIED)
                 persistMicSelection()
                 applyMicSelectionToActiveRecord()
+                sendStatusUpdate()
+            }
+            ACTION_SET_GAIN -> {
+                val requestedGain = intent.getFloatExtra(EXTRA_MIC_GAIN, DEFAULT_MIC_GAIN)
+                    .coerceIn(MIN_MIC_GAIN, MAX_MIC_GAIN)
+                micGain = requestedGain
+                persistMicGain(requestedGain)
+                Log.i(TAG, "Mic gain updated to ${"%.2f".format(requestedGain)}x")
                 sendStatusUpdate()
             }
             ACTION_SELECT_AUDIO_SOURCE -> {
@@ -135,6 +147,7 @@ class AudioStreamingService : Service() {
             putExtra(EXTRA_STATUS_ERROR, lastErrorMessage)
             putExtra(EXTRA_STATUS_ACTIVE_MIC, activeMicLabel)
             putExtra(EXTRA_STATUS_ROUTING_WARNING, routingWarningMessage)
+            putExtra(EXTRA_STATUS_CLIPPING_WARNING, clippingWarningActive)
         }
         sendBroadcast(statusIntent)
     }
@@ -228,6 +241,7 @@ class AudioStreamingService : Service() {
     private fun captureLoop(localAudioRecord: AudioRecord, destinationAddress: InetAddress) {
         val frameBuffer = ShortArray(FRAME_SIZE_SAMPLES)
         var framesSinceLastTick = 0
+        var clippedSamplesSinceLastTick = 0
         var lastTickTime = System.currentTimeMillis()
         val localSocket = try {
             DatagramSocket()
@@ -272,6 +286,7 @@ class AudioStreamingService : Service() {
                     continue
                 }
 
+                clippedSamplesSinceLastTick += applyGainInPlace(frameBuffer)
                 val opusPayload = localOpusEncoder.encodeFrame(frameBuffer) ?: continue
                 val packet = DatagramPacket(opusPayload, opusPayload.size, destinationAddress, destinationPort)
                 localSocket.send(packet)
@@ -280,7 +295,9 @@ class AudioStreamingService : Service() {
                 val now = System.currentTimeMillis()
                 if (now - lastTickTime >= STATS_INTERVAL_MS) {
                     lastMeasuredFramesPerSecond = framesSinceLastTick
+                    clippingWarningActive = clippedSamplesSinceLastTick > CLIPPING_WARNING_THRESHOLD_PER_SECOND
                     framesSinceLastTick = 0
+                    clippedSamplesSinceLastTick = 0
                     lastTickTime = now
                 }
             }
@@ -441,6 +458,7 @@ class AudioStreamingService : Service() {
         isStreaming = false
         lastMeasuredFramesPerSecond = 0
         routingWarningMessage = null
+        clippingWarningActive = false
         Log.i(TAG, "Capture pipeline released. AudioManager mode restored to $previousAudioMode")
         }
     }
@@ -548,12 +566,48 @@ class AudioStreamingService : Service() {
             .build()
     }
 
+
+    private fun applyGainInPlace(frameBuffer: ShortArray): Int {
+        val gain = micGain
+        if (gain == 1.0f) {
+            return 0
+        }
+
+        var clippedSamples = 0
+        for (index in frameBuffer.indices) {
+            val scaled = (frameBuffer[index] * gain).toInt()
+            val clamped = when {
+                scaled > Short.MAX_VALUE.toInt() -> {
+                    clippedSamples++
+                    Short.MAX_VALUE.toInt()
+                }
+                scaled < Short.MIN_VALUE.toInt() -> {
+                    clippedSamples++
+                    Short.MIN_VALUE.toInt()
+                }
+                else -> scaled
+            }
+            frameBuffer[index] = clamped.toShort()
+        }
+
+        return clippedSamples
+    }
+
+    private fun persistMicGain(gain: Float) {
+        val percent = (gain * MIC_GAIN_PERCENT_SCALE).toInt().coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT)
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(PREF_KEY_MIC_GAIN_PERCENT, percent)
+            .apply()
+    }
+
     companion object {
         const val ACTION_START = "com.phonemicdsp.sender.action.START_STREAMING"
         const val ACTION_STOP = "com.phonemicdsp.sender.action.STOP_STREAMING"
         const val ACTION_QUERY_STATUS = "com.phonemicdsp.sender.action.QUERY_STATUS"
         const val ACTION_SELECT_MIC = "com.phonemicdsp.sender.action.SELECT_MIC"
         const val ACTION_SELECT_AUDIO_SOURCE = "com.phonemicdsp.sender.action.SELECT_AUDIO_SOURCE"
+        const val ACTION_SET_GAIN = "com.phonemicdsp.sender.action.SET_GAIN"
         const val ACTION_STATUS_UPDATE = "com.phonemicdsp.sender.action.STATUS_UPDATE"
 
         const val EXTRA_DESTINATION_IP = "extra_destination_ip"
@@ -561,12 +615,14 @@ class AudioStreamingService : Service() {
         const val EXTRA_MIC_DEVICE_ID = "extra_mic_device_id"
         const val EXTRA_MIC_DIRECTION = "extra_mic_direction"
         const val EXTRA_AUDIO_SOURCE_MODE = "extra_audio_source_mode"
+        const val EXTRA_MIC_GAIN = "extra_mic_gain"
         const val EXTRA_STATUS_STREAMING = "extra_status_streaming"
         const val EXTRA_STATUS_PACKETS_PER_SECOND = "extra_status_packets_per_second"
         const val EXTRA_STATUS_DSP_SUMMARY = "extra_status_dsp_summary"
         const val EXTRA_STATUS_ERROR = "extra_status_error"
         const val EXTRA_STATUS_ACTIVE_MIC = "extra_status_active_mic"
         const val EXTRA_STATUS_ROUTING_WARNING = "extra_status_routing_warning"
+        const val EXTRA_STATUS_CLIPPING_WARNING = "extra_status_clipping_warning"
 
         private const val CHANNEL_ID = "audio_streaming_channel"
         private const val NOTIFICATION_ID = 2201
@@ -577,6 +633,7 @@ class AudioStreamingService : Service() {
         private const val PREF_KEY_MIC_DEVICE_ID = "mic_device_id"
         private const val PREF_KEY_MIC_DIRECTION = "mic_direction"
         private const val PREF_KEY_AUDIO_SOURCE_MODE = "audio_source_mode"
+        private const val PREF_KEY_MIC_GAIN_PERCENT = "mic_gain"
 
         private const val SAMPLE_RATE = 48_000
         private const val CHANNEL_COUNT = 1
@@ -586,6 +643,14 @@ class AudioStreamingService : Service() {
         private const val OPUS_COMPLEXITY = 8
         private const val OPUS_FEC_ENABLED = true
         private const val STATS_INTERVAL_MS = 1_000L
+        private const val MIN_MIC_GAIN = 1.0f
+        private const val MAX_MIC_GAIN = 8.0f
+        private const val DEFAULT_MIC_GAIN = 2.0f
+        private const val MIN_MIC_GAIN_PERCENT = 100
+        private const val MAX_MIC_GAIN_PERCENT = 800
+        private const val DEFAULT_MIC_GAIN_PERCENT = 200
+        private const val MIC_GAIN_PERCENT_SCALE = 100f
+        private const val CLIPPING_WARNING_THRESHOLD_PER_SECOND = 50
         private const val THREAD_JOIN_TIMEOUT_MS = 500L
         private const val TAG = "AudioStreamingService"
 
@@ -615,6 +680,12 @@ class AudioStreamingService : Service() {
             Intent(context, AudioStreamingService::class.java).apply {
                 action = ACTION_SELECT_AUDIO_SOURCE
                 putExtra(EXTRA_AUDIO_SOURCE_MODE, mode.name)
+            }
+
+        fun setGainIntent(context: Context, gain: Float): Intent =
+            Intent(context, AudioStreamingService::class.java).apply {
+                action = ACTION_SET_GAIN
+                putExtra(EXTRA_MIC_GAIN, gain.coerceIn(MIN_MIC_GAIN, MAX_MIC_GAIN))
             }
     }
 
