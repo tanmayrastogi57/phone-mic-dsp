@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Phone Mic Sender</string>
     <string name="hello_message">Phone Mic Sender MVP</string>
+    <string name="start_streaming_action">Start Streaming Service</string>
+    <string name="stop_streaming_action">Stop Streaming Service</string>
+    <string name="streaming_channel_name">Phone Mic Streaming</string>
+    <string name="streaming_channel_description">Keeps Android microphone streaming alive in the foreground.</string>
+    <string name="streaming_notification_title">Phone Mic streaming service</string>
+    <string name="streaming_notification_body">Foreground service is active and ready for audio streaming.</string>
 </resources>
