@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -32,6 +33,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dspStatusText: TextView
     private lateinit var activeMicText: TextView
     private lateinit var micRoutingStatusText: TextView
+    private lateinit var micGainValueText: TextView
+    private lateinit var micGainClippingWarningText: TextView
+    private lateinit var micGainSeekBar: SeekBar
     private lateinit var microphoneSpinner: Spinner
     private lateinit var audioSourceSpinner: Spinner
     private lateinit var microphoneAdapter: ArrayAdapter<String>
@@ -63,8 +67,9 @@ class MainActivity : AppCompatActivity() {
             val activeMic = intent.getStringExtra(AudioStreamingService.EXTRA_STATUS_ACTIVE_MIC)
                 ?: getString(R.string.default_microphone_label)
             val routingWarning = intent.getStringExtra(AudioStreamingService.EXTRA_STATUS_ROUTING_WARNING)
+            val clippingWarning = intent.getBooleanExtra(AudioStreamingService.EXTRA_STATUS_CLIPPING_WARNING, false)
 
-            updateStatusViews(isStreaming, packetsPerSecond, dspSummary, activeMic, routingWarning)
+            updateStatusViews(isStreaming, packetsPerSecond, dspSummary, activeMic, routingWarning, clippingWarning)
             if (!serviceError.isNullOrBlank() && serviceError != lastServiceError) {
                 lastServiceError = serviceError
                 Toast.makeText(this@MainActivity, serviceError, Toast.LENGTH_SHORT).show()
@@ -87,6 +92,9 @@ class MainActivity : AppCompatActivity() {
         dspStatusText = findViewById(R.id.dspStatusText)
         activeMicText = findViewById(R.id.activeMicText)
         micRoutingStatusText = findViewById(R.id.micRoutingStatusText)
+        micGainValueText = findViewById(R.id.micGainValueText)
+        micGainClippingWarningText = findViewById(R.id.micGainClippingWarningText)
+        micGainSeekBar = findViewById(R.id.micGainSeekBar)
         microphoneSpinner = findViewById(R.id.microphoneSpinner)
         audioSourceSpinner = findViewById(R.id.audioSourceSpinner)
 
@@ -105,6 +113,12 @@ class MainActivity : AppCompatActivity() {
         val sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         pcIpInput.setText(sharedPreferences.getString(PREF_KEY_PC_IP, ""))
         portInput.setText(sharedPreferences.getInt(PREF_KEY_PORT, DEFAULT_PORT).toString())
+
+        val restoredMicGainPercent = sharedPreferences.getInt(PREF_KEY_MIC_GAIN_PERCENT, DEFAULT_MIC_GAIN_PERCENT)
+            .coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT)
+        val restoredMicGain = restoredMicGainPercent / MIC_GAIN_PERCENT_SCALE
+        micGainSeekBar.progress = restoredMicGainPercent - MIN_MIC_GAIN_PERCENT
+        micGainValueText.text = getString(R.string.mic_gain_value_format, restoredMicGain)
 
         val restoredMicId = sharedPreferences.getInt(PREF_KEY_MIC_DEVICE_ID, DEVICE_ID_DEFAULT)
         val restoredAudioSourceMode = AudioSourceMode.fromStored(
@@ -148,12 +162,29 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         })
 
+        micGainSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val gainPercent = progress + MIN_MIC_GAIN_PERCENT
+                val gain = gainPercent / MIC_GAIN_PERCENT_SCALE
+                micGainValueText.text = getString(R.string.mic_gain_value_format, gain)
+                sharedPreferences.edit().putInt(PREF_KEY_MIC_GAIN_PERCENT, gainPercent).apply()
+                startService(AudioStreamingService.setGainIntent(this@MainActivity, gain))
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+
+        startService(AudioStreamingService.setGainIntent(this, restoredMicGain))
+
         updateStatusViews(
             isStreaming = false,
             packetsPerSecond = 0,
             dspSummary = getString(R.string.dsp_status_placeholder),
             activeMic = getString(R.string.default_microphone_label),
-            routingWarning = null
+            routingWarning = null,
+            clippingWarning = false
         )
 
         refreshMicsButton.setOnClickListener {
@@ -306,7 +337,8 @@ class MainActivity : AppCompatActivity() {
         packetsPerSecond: Int,
         dspSummary: String,
         activeMic: String,
-        routingWarning: String?
+        routingWarning: String?,
+        clippingWarning: Boolean
     ) {
         streamingStatusText.text = if (isStreaming) {
             getString(R.string.streaming_on)
@@ -318,6 +350,11 @@ class MainActivity : AppCompatActivity() {
         dspStatusText.text = getString(R.string.dsp_status_format, dspSummary)
         activeMicText.text = getString(R.string.active_mic_format, activeMic)
         micRoutingStatusText.text = routingWarning ?: getString(R.string.mic_routing_status_ok)
+        micGainClippingWarningText.text = if (clippingWarning) {
+            getString(R.string.mic_gain_clipping_warning)
+        } else {
+            getString(R.string.mic_gain_clipping_placeholder)
+        }
     }
 
     private fun hasRecordAudioPermission(): Boolean {
@@ -381,7 +418,12 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_KEY_MIC_DEVICE_ID = "mic_device_id"
         private const val PREF_KEY_MIC_DIRECTION = "mic_direction"
         private const val PREF_KEY_AUDIO_SOURCE_MODE = "audio_source_mode"
+        private const val PREF_KEY_MIC_GAIN_PERCENT = "mic_gain"
         private const val DEFAULT_PORT = 5555
+        private const val MIN_MIC_GAIN_PERCENT = 100
+        private const val MAX_MIC_GAIN_PERCENT = 800
+        private const val DEFAULT_MIC_GAIN_PERCENT = 200
+        private const val MIC_GAIN_PERCENT_SCALE = 100f
         private const val DEVICE_ID_DEFAULT = -1
         private const val TAG = "MainActivity"
     }
