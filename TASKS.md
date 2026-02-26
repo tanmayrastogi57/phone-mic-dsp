@@ -212,8 +212,8 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 - [ ] Expose config:
   - [ ] `latencyMs`
   - [ ] `bufferMs`
-- [ ] Provide recommended presets:
-  - [ ] Low-latency (higher stutter risk)
+- [x] Provide recommended presets:
+  - [x] Low-latency (higher stutter risk)
   - [ ] Balanced (default)
   - [ ] Stable (higher latency)
 
@@ -272,18 +272,20 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Only start these after MVP is stable.
 
 ### 6.1 Improve Opus quality (highest impact)
-- [ ] Add encoder config UI/flags:
-  - [ ] bitrate (32–128 kbps)
-  - [ ] complexity (0–10)
-  - [ ] frame duration (10/20ms)
-  - [ ] FEC on/off
-  - [ ] expected packet loss %
-- [ ] Provide recommended presets:
-  - [ ] Voice-clean (default)
-  - [ ] High-quality voice
-  - [ ] Low-latency
+- [x] Add encoder config UI/flags:
+  - [x] bitrate (32–128 kbps)
+  - [x] complexity (0–10)
+  - [x] frame duration (10/20ms)
+  - [x] FEC on/off
+  - [x] expected packet loss %
+- [x] Provide recommended presets:
+  - [x] Voice-clean (default)
+  - [x] High-quality voice
+  - [x] Low-latency
 
 **Done when:** quality improves without instability.
+
+_Status: Implemented UI/config plumbing and presets; runtime quality tuning still requires device validation._
 
 ### 6.2 Add packet header + jitter buffer
 - [ ] Define header:
