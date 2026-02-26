@@ -872,7 +872,7 @@ internal sealed class SequenceJitterBuffer : IDisposable
 
     public bool TryDequeue(out PooledPacket payload, out int skippedMissingPackets)
     {
-        payload = default!;
+        payload = null!;
         skippedMissingPackets = 0;
 
         if (!_expectedSequence.HasValue || _buffer.Count < _targetDelayPackets)
@@ -883,8 +883,9 @@ internal sealed class SequenceJitterBuffer : IDisposable
         while (true)
         {
             uint expected = _expectedSequence.Value;
-            if (_buffer.Remove(expected, out payload))
+            if (_buffer.Remove(expected, out var dequeuedPayload) && dequeuedPayload is not null)
             {
+                payload = dequeuedPayload;
                 _expectedSequence = expected + 1;
                 return true;
             }
