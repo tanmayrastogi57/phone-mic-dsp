@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
@@ -203,6 +204,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         get => _underrunsText;
         private set => SetProperty(ref _underrunsText, value);
     }
+
+    public string AppVersionText { get; } = BuildAppVersionText();
 
     public string StatusMessage
     {
@@ -557,6 +560,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         return LogLevel.Info;
+    }
+
+    private static string BuildAppVersionText()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            return $"Version {informational}";
+        }
+
+        var version = assembly.GetName().Version;
+        return version is null ? "Version unknown" : $"Version {version}";
     }
 
     private bool SetProperty<T>(ref T storage, T value, [CallerMemberName] string? propertyName = null)
