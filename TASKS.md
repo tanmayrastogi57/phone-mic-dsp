@@ -189,15 +189,15 @@ _Status: Implemented Core render-device enumeration/fallback/hot-unplug handling
 **Done when:** receiver can run in background reliably.
 
 ### 1.7.8 Packaging (“double-click software”)
-- [ ] Add publish profiles:
-  - [ ] portable build
-  - [ ] single-file build
-  - [ ] self-contained build (optional)
-- [ ] Optional installer:
-  - [ ] MSIX or MSI (WiX)
-- [ ] Versioning:
-  - [ ] show version in UI
-  - [ ] update CHANGELOG for releases
+- [x] Add publish profiles:
+  - [x] portable build
+  - [x] single-file build
+  - [x] self-contained build (optional)
+- [x] Optional installer:
+  - [x] MSIX or MSI (WiX)
+- [x] Versioning:
+  - [x] show version in UI
+  - [x] update CHANGELOG for releases
 
 **Done when:** you can distribute a build that runs on a fresh Windows machine without `dotnet run`.
 

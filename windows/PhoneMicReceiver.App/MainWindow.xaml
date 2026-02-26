@@ -162,7 +162,10 @@
             </Grid>
         </Border>
 
-        <TextBlock Grid.Row="6" Margin="2,10,2,0" TextWrapping="Wrap" Foreground="#666"
-                   Text="Tip: select VB-CABLE 'CABLE Input' as output device here, then select 'CABLE Output' as Discord input device." />
+        <StackPanel Grid.Row="6" Margin="2,10,2,0">
+            <TextBlock TextWrapping="Wrap" Foreground="#666"
+                       Text="Tip: select VB-CABLE 'CABLE Input' as output device here, then select 'CABLE Output' as Discord input device." />
+            <TextBlock Margin="0,6,0,0" Foreground="#777" Text="{Binding AppVersionText}" />
+        </StackPanel>
     </Grid>
 </Window>

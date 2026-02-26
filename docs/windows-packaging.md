@@ -1,66 +1,62 @@
 # Windows Packaging Guide
 
-## Goal
+This document covers Task **1.7.8 Packaging** for the WPF receiver app.
 
-Deliver a double-click executable that works without running commands.
+## Publish profiles
 
----
+The receiver app includes three publish profiles under:
 
-# Option 1 – Single File Publish (Recommended)
+- `windows/PhoneMicReceiver.App/Properties/PublishProfiles/Portable.pubxml`
+- `windows/PhoneMicReceiver.App/Properties/PublishProfiles/SingleFile.pubxml`
+- `windows/PhoneMicReceiver.App/Properties/PublishProfiles/SelfContainedSingleFile.pubxml`
 
-## Build Self-Contained EXE
-dotnet publish windows/PhoneMicReceiver.App
--c Release
--r win-x64
---self-contained true
-/p:PublishSingleFile=true
+Run these commands from repository root.
 
-Output:
+### 1) Portable build (framework-dependent)
 
-Distribute:
-- EXE file
-- README
-- Optional shortcut
+```powershell
+dotnet publish windows/PhoneMicReceiver.App/PhoneMicReceiver.App.csproj -p:PublishProfile=Portable
+```
 
----
+Output folder:
 
-# Option 2 – MSIX (Modern Installer)
+- `windows/PhoneMicReceiver.App/bin/Release/net8.0-windows/publish/portable/`
 
-Use Visual Studio:
-- Add Windows Packaging Project
-- Configure identity
-- Generate MSIX package
+Use this when target machines already have the .NET Desktop Runtime installed.
 
-Pros:
-- Clean install/uninstall
-- Trusted deployment
-- Windows 11 native
+### 2) Single-file build (framework-dependent)
 
----
+```powershell
+dotnet publish windows/PhoneMicReceiver.App/PhoneMicReceiver.App.csproj -p:PublishProfile=SingleFile
+```
 
-# Option 3 – MSI (WiX Toolset)
+Output folder:
 
-For classic installer:
-- Install WiX Toolset
-- Define Product.wxs
-- Build MSI
+- `windows/PhoneMicReceiver.App/bin/Release/net8.0-windows/publish/single-file/`
 
-Recommended only if enterprise distribution needed.
+Produces a single EXE while still depending on the installed .NET runtime.
 
----
+### 3) Self-contained single-file build (optional)
 
-# Run at Startup
+```powershell
+dotnet publish windows/PhoneMicReceiver.App/PhoneMicReceiver.App.csproj -p:PublishProfile=SelfContainedSingleFile
+```
 
-Add registry key:
-HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+Output folder:
 
-Value:PhoneMicReceiver = "path_to_exe"
+- `windows/PhoneMicReceiver.App/bin/Release/net8.0-windows/publish/self-contained/`
 
----
+This is the best option for fresh Windows machines with no .NET runtime preinstalled.
 
-# Signing (Optional but Recommended)
+## Optional installer
 
-Sign EXE with:
-signtool sign /a /fd SHA256 yourfile.exe
+No MSI/MSIX project is included in MVP. If you need an installer later:
 
-Prevents Windows SmartScreen warnings.
+- **MSIX**: use a Visual Studio Windows Packaging Project.
+- **MSI**: use WiX Toolset for classic enterprise deployment.
+
+## Versioning
+
+- App version is set in `PhoneMicReceiver.App.csproj` (`Version`, `AssemblyVersion`, `FileVersion`, `InformationalVersion`).
+- The GUI displays the version in the main window footer.
+- Update `CHANGELOG.md` for every release.
