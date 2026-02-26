@@ -102,98 +102,102 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Goal: replace command-line usage with a Windows GUI app and refactor the receiver into a reusable Core library, while keeping the Android↔Windows streaming protocol unchanged.
 
 ### 1.7.1 Refactor Windows into Core + CLI + GUI projects
-- [ ] Create projects:
-  - [ ] `windows/PhoneMicReceiver.Core` (class library)
-  - [ ] `windows/PhoneMicReceiver.Cli` (console wrapper; recommended for debugging)
-  - [ ] `windows/PhoneMicReceiver.App` (WPF GUI)
-- [ ] Move current receiver logic out of `Program.cs` into Core classes (network + Opus decode + audio sink)
-- [ ] Keep CLI behavior working by calling Core (no duplicate logic)
+- [x] Create projects:
+  - [x] `windows/PhoneMicReceiver.Core` (class library)
+  - [x] `windows/PhoneMicReceiver.Cli` (console wrapper; recommended for debugging)
+  - [x] `windows/PhoneMicReceiver.App` (WPF GUI)
+- [x] Move current receiver logic out of `Program.cs` into Core classes (network + Opus decode + audio sink)
+- [x] Keep CLI behavior working by calling Core (no duplicate logic)
 
 **Done when:** `dotnet build` succeeds and CLI can still receive Opus and play to VB-CABLE.
 
 ### 1.7.2 Define Core public API (ReceiverEngine)
-- [ ] Add `ReceiverConfig`:
-  - [ ] listen port (default 5555)
-  - [ ] bind address (default 0.0.0.0)
-  - [ ] device selection (id or substring, default "CABLE Input")
-  - [ ] outputLatencyMs (default 50)
-  - [ ] bufferLengthMs (default 500)
-  - [ ] optional: lock to sender IP (ignore other sources)
-- [ ] Add `ReceiverStats`:
-  - [ ] packets/sec + packetsTotal
-  - [ ] decodeErrors
-  - [ ] bufferedMs
-  - [ ] overflows + underruns
-- [ ] Implement `ReceiverEngine`:
-  - [ ] `StartAsync(ReceiverConfig)`
-  - [ ] `StopAsync()`
-  - [ ] events/callbacks: `OnStats`, `OnLog`, `OnStateChanged`
+- [x] Add `ReceiverConfig`:
+  - [x] listen port (default 5555)
+  - [x] bind address (default 0.0.0.0)
+  - [x] device selection (id or substring, default "CABLE Input")
+  - [x] outputLatencyMs (default 50)
+  - [x] bufferLengthMs (default 500)
+  - [x] optional: lock to sender IP (ignore other sources)
+- [x] Add `ReceiverStats`:
+  - [x] packets/sec + packetsTotal
+  - [x] decodeErrors
+  - [x] bufferedMs
+  - [x] overflows + underruns
+- [x] Implement `ReceiverEngine`:
+  - [x] `StartAsync(ReceiverConfig)`
+  - [x] `StopAsync()`
+  - [x] events/callbacks: `OnStats`, `OnLog`, `OnStateChanged`
 
 **Done when:** UI and CLI can control the receiver with the same API.
 
+_Status: Implemented `ReceiverEngine` API with shared config/stats/events in Core and switched CLI control flow to `StartAsync`/`StopAsync`; WPF wiring remains scaffolded for later UI tasks._
+
 ### 1.7.3 Audio device enumeration + selection (Core)
-- [ ] Expose render device list (id + friendly name)
-- [ ] Default selection strategy:
-  - [ ] prefer devices matching "CABLE Input"
-  - [ ] fallback to default render device
-- [ ] Support “refresh devices” (re-enumerate)
-- [ ] Handle device hot-unplug gracefully (stop with error, show message, allow reselect)
+- [x] Expose render device list (id + friendly name)
+- [x] Default selection strategy:
+  - [x] prefer devices matching "CABLE Input"
+  - [x] fallback to default render device
+- [x] Support “refresh devices” (re-enumerate)
+- [x] Handle device hot-unplug gracefully (stop with error, show message, allow reselect)
 
 **Done when:** GUI dropdown works and selection persists across restarts.
 
+_Status: Implemented Core render-device enumeration/fallback/hot-unplug handling and wired WPF dropdown refresh + persisted device selection to AppData._
+
 ### 1.7.4 Performance / CPU spike fixes (Core)
-- [ ] Eliminate per-packet allocations in the receive/decode loop:
-  - [ ] remove `pcmBytes.ToArray()` usage
-  - [ ] replace `new byte[...]` per packet with reusable buffer or `ArrayPool<byte>`
-- [ ] Keep decoded sample buffers reused (no per-frame `short[]` allocations)
-- [ ] Throttle stats publishing to a fixed cadence (e.g., 4–10 updates/sec) independent of packet rate
+- [x] Eliminate per-packet allocations in the receive/decode loop:
+  - [x] remove `pcmBytes.ToArray()` usage
+  - [x] replace `new byte[...]` per packet with reusable buffer or `ArrayPool<byte>`
+- [x] Keep decoded sample buffers reused (no per-frame `short[]` allocations)
+- [x] Throttle stats publishing to a fixed cadence (e.g., 4–10 updates/sec) independent of packet rate
 - [ ] Optional: record GC collection counts for diagnostics
 
 **Done when:** allocations per packet are ~0 (verified by profiler) and CPU spikes reduce.
 
 ### 1.7.5 Build WPF GUI (MVVM)
-- [ ] Main controls:
-  - [ ] Start / Stop
-  - [ ] Listen port
-  - [ ] Output device dropdown + Refresh button
-  - [ ] outputLatencyMs + bufferLengthMs
-  - [ ] Presets: Low-latency / Balanced / Stable
-  - [ ] Test tone button
-- [ ] Status + diagnostics panel:
-  - [ ] state (Stopped / Starting / Running / Error)
-  - [ ] packets/sec, decodeErrors, bufferedMs, overflows, underruns
-- [ ] Log panel:
-  - [ ] filter by level (Info/Warn/Error)
-  - [ ] copy logs to clipboard
-  - [ ] open log folder
+- [x] Main controls:
+  - [x] Start / Stop
+  - [x] Listen port
+  - [x] Output device dropdown + Refresh button
+  - [x] outputLatencyMs + bufferLengthMs
+  - [x] Presets: Low-latency / Balanced / Stable
+  - [x] Test tone button
+- [x] Status + diagnostics panel:
+  - [x] state (Stopped / Starting / Running / Error)
+  - [x] packets/sec, decodeErrors, bufferedMs, overflows, underruns
+- [x] Log panel:
+  - [x] filter by level (Info/Warn/Error)
+  - [x] copy logs to clipboard
+  - [x] open log folder
 
 **Done when:** user can run the receiver end-to-end without opening a terminal.
 
 ### 1.7.6 Settings persistence
-- [ ] Save/load settings:
-  - [ ] `%AppData%\phone-mic-dsp\settings.json`
-- [ ] Persist: last port, selected device, latency/buffer, lockSenderIp, window state
-- [ ] Add “Reset to defaults” button
+- [x] Save/load settings:
+  - [x] `%AppData%\phone-mic-dsp\settings.json`
+- [x] Persist: last port, selected device, latency/buffer, lockSenderIp, window state
+- [x] Add “Reset to defaults” button
 
 **Done when:** app reopens with previous settings and can start immediately.
 
 ### 1.7.7 Tray + Startup behavior
-- [ ] Minimize-to-tray option (receiver keeps running)
-- [ ] Tray menu: Show/Hide, Start/Stop, Exit
-- [ ] “Run at startup” toggle (CurrentUser Startup or registry)
+- [x] Minimize-to-tray option (receiver keeps running)
+- [x] Tray menu: Show/Hide, Start/Stop, Exit
+- [x] “Run at startup” toggle (CurrentUser Startup or registry)
 
 **Done when:** receiver can run in background reliably.
 
 ### 1.7.8 Packaging (“double-click software”)
-- [ ] Add publish profiles:
-  - [ ] portable build
-  - [ ] single-file build
-  - [ ] self-contained build (optional)
-- [ ] Optional installer:
-  - [ ] MSIX or MSI (WiX)
-- [ ] Versioning:
-  - [ ] show version in UI
-  - [ ] update CHANGELOG for releases
+- [x] Add publish profiles:
+  - [x] portable build
+  - [x] single-file build
+  - [x] self-contained build (optional)
+- [x] Optional installer:
+  - [x] MSIX or MSI (WiX)
+- [x] Versioning:
+  - [x] show version in UI
+  - [x] update CHANGELOG for releases
 
 **Done when:** you can distribute a build that runs on a fresh Windows machine without `dotnet run`.
 
