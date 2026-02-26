@@ -161,9 +161,10 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
             WritePcmToBuffer(pcmBytes);
             bufferPrimed = true;
         }
-        catch (OpusException)
+        catch (Exception)
         {
             decodeErrors++;
+            continue;
         }
 
         if (statsWindow.ElapsedMilliseconds >= 1_000)
