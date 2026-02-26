@@ -84,7 +84,7 @@ public partial class MainWindow : Window
         var notifyIcon = new Forms.NotifyIcon
         {
             Text = "Phone Mic Receiver",
-            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? string.Empty) ?? SystemIcons.Application,
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? string.Empty) ?? System.Drawing.SystemIcons.Application,
             ContextMenuStrip = menu,
             Visible = false
         };

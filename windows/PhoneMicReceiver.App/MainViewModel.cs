@@ -10,7 +10,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
 using PhoneMicReceiver.Core;
-
+using System.IO;
 namespace PhoneMicReceiver.App;
 
 public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
@@ -403,7 +403,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void HandleStats(ReceiverStats stats)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             PacketsPerSecondText = stats.PacketsPerSecond.ToString();
             DecodeErrorsText = stats.DecodeErrors.ToString();
@@ -415,7 +415,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void HandleStateChanged(ReceiverState state)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state.ToString();
             RaiseCommandCanExecuteChanged();
@@ -430,7 +430,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void AddLog(LogLevel level, string message)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             var logEntry = new LogEntry(DateTimeOffset.Now, level, message);
             _logs.Add(logEntry);
