@@ -34,6 +34,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _overflowsText = "0";
     private string _underrunsText = "0";
     private string _windowStateText = nameof(WindowState.Normal);
+    private bool _minimizeToTray;
+    private bool _runAtStartup;
 
     private RenderDeviceInfo? _selectedDevice;
 
@@ -132,6 +134,34 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         private set => SetProperty(ref _windowStateText, value);
     }
 
+    public bool MinimizeToTray
+    {
+        get => _minimizeToTray;
+        set
+        {
+            if (!SetProperty(ref _minimizeToTray, value))
+            {
+                return;
+            }
+
+            SaveSettings();
+        }
+    }
+
+    public bool RunAtStartup
+    {
+        get => _runAtStartup;
+        set
+        {
+            if (!SetProperty(ref _runAtStartup, value))
+            {
+                return;
+            }
+
+            SaveSettings();
+        }
+    }
+
     public RenderDeviceInfo? SelectedDevice
     {
         get => _selectedDevice;
@@ -210,6 +240,21 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         WindowStateText = state.ToString();
     }
 
+    public bool ShouldMinimizeToTray() => MinimizeToTray;
+
+    public async Task ToggleStartStopAsync()
+    {
+        if (_engine.State is ReceiverState.Starting or ReceiverState.Running)
+        {
+            await StopAsync();
+            return;
+        }
+
+        await StartAsync();
+    }
+
+    public bool IsRunning() => _engine.State is ReceiverState.Starting or ReceiverState.Running;
+
     public void SaveSettings()
     {
         var settings = new AppSettings
@@ -219,7 +264,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OutputLatencyMs = ParseOrDefault(OutputLatencyMsText, ReceiverConfigDefaults.OutputLatencyMs),
             BufferLengthMs = ParseOrDefault(BufferLengthMsText, ReceiverConfigDefaults.BufferLengthMs),
             LockSenderIp = string.IsNullOrWhiteSpace(LockSenderIpText) ? null : LockSenderIpText.Trim(),
-            WindowState = WindowStateText
+            WindowState = WindowStateText,
+            MinimizeToTray = MinimizeToTray,
+            RunAtStartup = RunAtStartup
         };
 
         SettingsStore.Save(settings);
@@ -233,6 +280,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         BufferLengthMsText = settings.BufferLengthMs.ToString();
         LockSenderIpText = settings.LockSenderIp ?? string.Empty;
         WindowStateText = settings.WindowState;
+        MinimizeToTray = settings.MinimizeToTray;
+        RunAtStartup = settings.RunAtStartup;
 
         if (!string.IsNullOrWhiteSpace(settings.SelectedDeviceId))
         {
@@ -253,6 +302,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         BufferLengthMsText = ReceiverConfigDefaults.BufferLengthMs.ToString();
         LockSenderIpText = string.Empty;
         WindowStateText = nameof(WindowState.Normal);
+        MinimizeToTray = false;
+        RunAtStartup = false;
 
         SelectedDevice = Devices.FirstOrDefault(d => d.MatchesPreferredSubstring)
             ?? Devices.FirstOrDefault(d => d.IsDefault)
