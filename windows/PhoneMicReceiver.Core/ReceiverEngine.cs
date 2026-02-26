@@ -437,7 +437,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
             Interlocked.Increment(ref packetsThisWindow);
             Interlocked.Increment(ref packetsTotal);
 
-            if (!TryParsePacket(packetBuffer, packetBuffer.Length, out uint sequence, out uint timestampMs, out int payloadOffset, out int payloadLength))
+            if (!TryParsePacket(packetBuffer, packetBuffer.Length, out uint sequence, out uint timestampMs, out ReadOnlySpan<byte> opusPayload))
             {
                 Interlocked.Increment(ref malformedPackets);
                 Interlocked.Increment(ref malformedPacketsThisWindow);
@@ -457,8 +457,9 @@ public sealed class ReceiverEngine : IAsyncDisposable
             lastSequenceReceived = sequence;
             lastTimestampReceived = timestampMs;
 
+            int payloadLength = opusPayload.Length;
             byte[] pooledPayloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
-            Buffer.BlockCopy(packetBuffer, payloadOffset, pooledPayloadBuffer, 0, payloadLength);
+            opusPayload.CopyTo(pooledPayloadBuffer);
             var pooledPayload = new PooledPacket(pooledPayloadBuffer, payloadLength);
 
             var enqueueOutcome = jitterBuffer.Enqueue(sequence, timestampMs, pooledPayload);
@@ -582,12 +583,11 @@ public sealed class ReceiverEngine : IAsyncDisposable
         }
     }
 
-    private static bool TryParsePacket(byte[] datagram, int length, out uint seq, out uint ts, out int payloadOffset, out int payloadLength)
+    private static bool TryParsePacket(byte[] datagram, int length, out uint seq, out uint ts, out ReadOnlySpan<byte> opusPayload)
     {
         seq = 0;
         ts = 0;
-        payloadOffset = 0;
-        payloadLength = 0;
+        opusPayload = ReadOnlySpan<byte>.Empty;
 
         if (length <= 8)
         {
@@ -602,8 +602,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
             | ((uint)datagram[5] << 16)
             | ((uint)datagram[6] << 8)
             | datagram[7];
-        payloadOffset = 8;
-        payloadLength = length - payloadOffset;
+        opusPayload = datagram.AsSpan(8, length - 8);
         return true;
     }
 
