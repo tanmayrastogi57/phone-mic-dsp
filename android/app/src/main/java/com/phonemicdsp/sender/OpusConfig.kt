@@ -31,7 +31,18 @@ data class OpusStreamingConfig(
         const val MONO_CHANNEL_COUNT = 1
         const val STEREO_CHANNEL_COUNT = 2
 
-        val DEFAULT = OpusPreset.VOICE_CLEAN.config
+        fun defaultConfig(): OpusStreamingConfig {
+            return OpusStreamingConfig(
+                bitrateBps = 48_000,
+                complexity = 8,
+                frameDuration = OpusFrameDuration.MS_20,
+                fecEnabled = true,
+                expectedPacketLossPercent = 5,
+                channelCount = MONO_CHANNEL_COUNT
+            )
+        }
+
+        val DEFAULT: OpusStreamingConfig by lazy { defaultConfig() }
 
         fun sanitize(
             bitrateBps: Int,

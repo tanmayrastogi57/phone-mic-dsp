@@ -93,6 +93,7 @@ class AudioStreamingService : Service() {
         )
         micGain = sharedPreferences.getInt(PREF_KEY_MIC_GAIN_PERCENT, DEFAULT_MIC_GAIN_PERCENT)
             .coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT) / MIC_GAIN_PERCENT_SCALE
+        Log.i(TAG, "AudioStreamingService.onCreate: loaded preset/config ${opusConfig.summary()}")
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -158,7 +159,7 @@ class AudioStreamingService : Service() {
             null -> {
                 destinationIp = intent?.getStringExtra(EXTRA_DESTINATION_IP).orEmpty()
                 destinationPort = intent?.getIntExtra(EXTRA_DESTINATION_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
-                Log.i(TAG, "Starting foreground capture for $destinationIp:$destinationPort")
+                Log.i(TAG, "Starting foreground capture for $destinationIp:$destinationPort with ${opusConfig.summary()}")
                 startForeground(NOTIFICATION_ID, buildStreamingNotification())
                 startCapturePipeline()
             }

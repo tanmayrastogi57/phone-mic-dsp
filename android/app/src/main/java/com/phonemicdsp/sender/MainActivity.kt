@@ -58,8 +58,8 @@ class MainActivity : AppCompatActivity() {
     private var lastServiceError: String? = null
     private var microphoneOptions: List<MicrophoneOption> = emptyList()
     private var audioSourceOptions: List<AudioSourceMode> = emptyList()
-    private var opusPresetOptions: List<OpusPreset> = OpusPreset.entries
-    private var opusFrameDurationOptions: List<OpusFrameDuration> = OpusFrameDuration.entries
+    private lateinit var opusPresetOptions: List<OpusPreset>
+    private lateinit var opusFrameDurationOptions: List<OpusFrameDuration>
     private var suppressOpusUiEvents = false
 
     private val requestRecordAudioPermission =
@@ -98,7 +98,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        Log.i(TAG, "MainActivity.onCreate: initializing UI")
+        opusPresetOptions = OpusPreset.entries
+        opusFrameDurationOptions = OpusFrameDuration.entries
+        Log.i(TAG, "MainActivity.onCreate: initializing UI with default preset=${OpusPreset.VOICE_CLEAN.name}, default config=${OpusStreamingConfig.DEFAULT.summary()}")
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
