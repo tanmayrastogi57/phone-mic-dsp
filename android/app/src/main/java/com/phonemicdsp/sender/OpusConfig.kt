@@ -14,10 +14,11 @@ data class OpusStreamingConfig(
     val complexity: Int,
     val frameDuration: OpusFrameDuration,
     val fecEnabled: Boolean,
-    val expectedPacketLossPercent: Int
+    val expectedPacketLossPercent: Int,
+    val channelCount: Int
 ) {
     fun summary(): String {
-        return "Opus: ${bitrateBps / 1000}kbps, complexity=$complexity, frame=${frameDuration.millis}ms, fec=${if (fecEnabled) "on" else "off"}, loss=$expectedPacketLossPercent%"
+        return "Opus: ${bitrateBps / 1000}kbps, complexity=$complexity, frame=${frameDuration.millis}ms, fec=${if (fecEnabled) "on" else "off"}, loss=$expectedPacketLossPercent%, channels=$channelCount"
     }
 
     companion object {
@@ -27,6 +28,8 @@ data class OpusStreamingConfig(
         const val MAX_COMPLEXITY = 10
         const val MIN_EXPECTED_PACKET_LOSS_PERCENT = 0
         const val MAX_EXPECTED_PACKET_LOSS_PERCENT = 20
+        const val MONO_CHANNEL_COUNT = 1
+        const val STEREO_CHANNEL_COUNT = 2
 
         val DEFAULT = OpusPreset.VOICE_CLEAN.config
 
@@ -35,7 +38,8 @@ data class OpusStreamingConfig(
             complexity: Int,
             frameDurationMs: Int,
             fecEnabled: Boolean,
-            expectedPacketLossPercent: Int
+            expectedPacketLossPercent: Int,
+            channelCount: Int
         ): OpusStreamingConfig {
             return OpusStreamingConfig(
                 bitrateBps = bitrateBps.coerceIn(MIN_BITRATE_BPS, MAX_BITRATE_BPS),
@@ -45,7 +49,8 @@ data class OpusStreamingConfig(
                 expectedPacketLossPercent = expectedPacketLossPercent.coerceIn(
                     MIN_EXPECTED_PACKET_LOSS_PERCENT,
                     MAX_EXPECTED_PACKET_LOSS_PERCENT
-                )
+                ),
+                channelCount = if (channelCount == STEREO_CHANNEL_COUNT) STEREO_CHANNEL_COUNT else MONO_CHANNEL_COUNT
             )
         }
     }
@@ -59,7 +64,8 @@ enum class OpusPreset(val displayNameResId: Int, val config: OpusStreamingConfig
             complexity = 8,
             frameDuration = OpusFrameDuration.MS_20,
             fecEnabled = true,
-            expectedPacketLossPercent = 5
+            expectedPacketLossPercent = 5,
+            channelCount = OpusStreamingConfig.MONO_CHANNEL_COUNT
         )
     ),
     HIGH_QUALITY_VOICE(
@@ -69,7 +75,8 @@ enum class OpusPreset(val displayNameResId: Int, val config: OpusStreamingConfig
             complexity = 10,
             frameDuration = OpusFrameDuration.MS_20,
             fecEnabled = true,
-            expectedPacketLossPercent = 5
+            expectedPacketLossPercent = 5,
+            channelCount = OpusStreamingConfig.MONO_CHANNEL_COUNT
         )
     ),
     LOW_LATENCY(
@@ -79,7 +86,8 @@ enum class OpusPreset(val displayNameResId: Int, val config: OpusStreamingConfig
             complexity = 6,
             frameDuration = OpusFrameDuration.MS_10,
             fecEnabled = false,
-            expectedPacketLossPercent = 0
+            expectedPacketLossPercent = 0,
+            channelCount = OpusStreamingConfig.MONO_CHANNEL_COUNT
         )
     );
 

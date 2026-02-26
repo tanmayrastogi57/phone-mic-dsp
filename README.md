@@ -76,3 +76,16 @@ ipconfig
   - **CAMCORDER**: closest to video-recording mic/orientation behavior; can improve low volume on some devices
 - You can switch modes while streaming. The app performs a short hot restart of `AudioRecord` (brief glitch expected) while keeping Opus/UDP protocol unchanged.
 - OEM audio routing differs by phone model/firmware. **CAMCORDER is best-effort** and may not map to the same physical mic on every device.
+
+
+## Stereo mode (optional, Task 6.3)
+- The Android app now detects whether the selected microphone reports stereo input channels.
+- Enable **Stereo capture (experimental)** only when the app shows stereo support is available for the selected mic.
+- Stereo sends **2-channel Opus** and usually benefits from **96–128 kbps** bitrate.
+- Start the Windows receiver with an explicit channels argument of `2` to decode stereo:
+
+```powershell
+dotnet run --project windows/PhoneMicReceiver -- 5555 "CABLE Input" 50 500 0 60 2
+```
+
+Discord may still downmix or otherwise process incoming stereo to mono depending on client/server behavior.
