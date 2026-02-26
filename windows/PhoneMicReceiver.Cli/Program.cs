@@ -1,3 +1,4 @@
+using System.Net;
 using PhoneMicReceiver.Core;
 
 var config = new ReceiverConfig
@@ -8,7 +9,9 @@ var config = new ReceiverConfig
     BufferLengthMs = ParsePositiveIntArg(args, 3, 500, "bufferLengthMs"),
     TestToneSeconds = ParseNonNegativeIntArg(args, 4, 0, "testToneSeconds"),
     JitterTargetDelayMs = ParseNonNegativeIntArg(args, 5, 60, "jitterTargetDelayMs"),
-    Channels = ParseChannelCountArg(args, 6, ReceiverConfig.DefaultChannels)
+    Channels = ParseChannelCountArg(args, 6, ReceiverConfig.DefaultChannels),
+    BindAddress = ParseBindAddressArg(args, 7),
+    LockToSenderIp = ParseOptionalIpArg(args, 8, "lockToSenderIp")
 };
 
 using var cancellationTokenSource = new CancellationTokenSource();
@@ -19,10 +22,14 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellationTokenSource.Cancel();
 };
 
+await using var engine = new ReceiverEngine();
+engine.OnLog += Console.WriteLine;
+engine.OnStateChanged += state => Console.WriteLine($"[state] {state}");
+
 try
 {
-    var runner = new ReceiverRunner();
-    await runner.RunUntilCancelledAsync(config, cancellationTokenSource.Token);
+    await engine.StartAsync(config, cancellationTokenSource.Token);
+    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationTokenSource.Token);
 }
 catch (OperationCanceledException)
 {
@@ -31,6 +38,10 @@ catch (Exception ex)
 {
     Console.Error.WriteLine(ex.Message);
     Environment.ExitCode = 1;
+}
+finally
+{
+    await engine.StopAsync();
 }
 
 static int ParseChannelCountArg(string[] commandLineArgs, int index, int defaultValue)
@@ -82,4 +93,38 @@ static int ParseNonNegativeIntArg(string[] commandLineArgs, int index, int defau
     Console.Error.WriteLine($"Invalid {argName}: '{commandLineArgs[index]}'. Expected a non-negative integer.");
     Environment.Exit(1);
     return defaultValue;
+}
+
+static string ParseBindAddressArg(string[] commandLineArgs, int index)
+{
+    if (commandLineArgs.Length <= index || string.IsNullOrWhiteSpace(commandLineArgs[index]))
+    {
+        return ReceiverConfig.DefaultBindAddress;
+    }
+
+    if (IPAddress.TryParse(commandLineArgs[index], out _))
+    {
+        return commandLineArgs[index];
+    }
+
+    Console.Error.WriteLine($"Invalid bindAddress: '{commandLineArgs[index]}'. Expected an IP address literal.");
+    Environment.Exit(1);
+    return ReceiverConfig.DefaultBindAddress;
+}
+
+static IPAddress? ParseOptionalIpArg(string[] commandLineArgs, int index, string argName)
+{
+    if (commandLineArgs.Length <= index || string.IsNullOrWhiteSpace(commandLineArgs[index]))
+    {
+        return null;
+    }
+
+    if (IPAddress.TryParse(commandLineArgs[index], out var parsed))
+    {
+        return parsed;
+    }
+
+    Console.Error.WriteLine($"Invalid {argName}: '{commandLineArgs[index]}'. Expected an IP address literal.");
+    Environment.Exit(1);
+    return null;
 }
