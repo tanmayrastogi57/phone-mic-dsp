@@ -52,6 +52,8 @@ internal sealed class PooledPacket : IDisposable
         ? ReadOnlySpan<byte>.Empty
         : _buffer.AsSpan(0, Length);
 
+    public byte[] Buffer => _buffer ?? throw new ObjectDisposedException(nameof(PooledPacket));
+
     public void Dispose()
     {
         if (_buffer is null)
@@ -417,41 +419,52 @@ public sealed class ReceiverEngine : IAsyncDisposable
             {
                 using (nextPayload)
                 {
-                if (skipped > 0)
-                {
-                    Interlocked.Add(ref missingPacketsSkipped, skipped);
-                }
-
-                try
-                {
-                    int decodedFrameCount = opusDecoder.Decode(nextPayload.Span, decodedSamples, frameSize, false);
-                    int totalSamples = decodedFrameCount * config.Channels;
-                    if (totalSamples <= 0)
+                    if (skipped > 0)
                     {
-                        continue;
+                        Interlocked.Add(ref missingPacketsSkipped, skipped);
                     }
 
-                    for (int i = 0; i < totalSamples; i++)
+                    try
                     {
-                        floatSamples[i] = decodedSamples[i] / 32768f;
+                        int decodedPerChannel = opusDecoder.Decode(
+                            nextPayload.Buffer,
+                            0,
+                            nextPayload.Length,
+                            decodedSamples,
+                            0,
+                            frameSize,
+                            false);
+
+                        int totalSamples = decodedPerChannel * config.Channels;
+                        if (totalSamples <= 0)
+                        {
+                            continue;
+                        }
+
+                        totalSamples = Math.Min(totalSamples, decodedSamples.Length);
+                        totalSamples = Math.Min(totalSamples, floatSamples.Length);
+
+                        for (int i = 0; i < totalSamples; i++)
+                        {
+                            floatSamples[i] = decodedSamples[i] / 32768f;
+                        }
+
+                        int floatBytesCount = totalSamples * sizeof(float);
+                        Buffer.BlockCopy(floatSamples, 0, pcmFloatBytes, 0, floatBytesCount);
+
+                        if (bufferedWaveProvider.BufferedBytes + floatBytesCount > bufferedWaveProvider.BufferLength)
+                        {
+                            long overflowEvent = Interlocked.Increment(ref overflows);
+                            Log($"[buffer] overflow predicted; dropping oldest samples (event #{overflowEvent}).");
+                        }
+
+                        bufferedWaveProvider.AddSamples(pcmFloatBytes, 0, floatBytesCount);
+                        bufferPrimed = true;
                     }
-
-                    int floatBytesCount = totalSamples * sizeof(float);
-                    Buffer.BlockCopy(floatSamples, 0, pcmFloatBytes, 0, floatBytesCount);
-
-                    if (bufferedWaveProvider.BufferedBytes + floatBytesCount > bufferedWaveProvider.BufferLength)
+                    catch (Exception)
                     {
-                        long overflowEvent = Interlocked.Increment(ref overflows);
-                        Log($"[buffer] overflow predicted; dropping oldest samples (event #{overflowEvent}).");
+                        Interlocked.Increment(ref decodeErrors);
                     }
-
-                    bufferedWaveProvider.AddSamples(pcmFloatBytes, 0, floatBytesCount);
-                    bufferPrimed = true;
-                }
-                catch (Exception)
-                {
-                    Interlocked.Increment(ref decodeErrors);
-                }
                 }
             }
         }
