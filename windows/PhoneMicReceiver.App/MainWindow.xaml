@@ -1,0 +1,13 @@
+<Window x:Class="PhoneMicReceiver.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Phone Mic Receiver"
+        Height="220"
+        Width="420">
+    <Grid Margin="16">
+        <TextBlock
+            TextWrapping="Wrap"
+            Text="PhoneMicReceiver.App scaffold created in task 1.7.1. GUI wiring to ReceiverEngine/Core is tracked in later tasks."
+            VerticalAlignment="Center" />
+    </Grid>
+</Window>
