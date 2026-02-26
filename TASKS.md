@@ -97,6 +97,107 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 
 ---
 
+## Phase 1.7 — Windows Receiver Desktop App ("Real Software")
+
+> Goal: replace command-line usage with a Windows GUI app and refactor the receiver into a reusable Core library, while keeping the Android↔Windows streaming protocol unchanged.
+
+### 1.7.1 Refactor Windows into Core + CLI + GUI projects
+- [ ] Create projects:
+  - [ ] `windows/PhoneMicReceiver.Core` (class library)
+  - [ ] `windows/PhoneMicReceiver.Cli` (console wrapper; recommended for debugging)
+  - [ ] `windows/PhoneMicReceiver.App` (WPF GUI)
+- [ ] Move current receiver logic out of `Program.cs` into Core classes (network + Opus decode + audio sink)
+- [ ] Keep CLI behavior working by calling Core (no duplicate logic)
+
+**Done when:** `dotnet build` succeeds and CLI can still receive Opus and play to VB-CABLE.
+
+### 1.7.2 Define Core public API (ReceiverEngine)
+- [ ] Add `ReceiverConfig`:
+  - [ ] listen port (default 5555)
+  - [ ] bind address (default 0.0.0.0)
+  - [ ] device selection (id or substring, default "CABLE Input")
+  - [ ] outputLatencyMs (default 50)
+  - [ ] bufferLengthMs (default 500)
+  - [ ] optional: lock to sender IP (ignore other sources)
+- [ ] Add `ReceiverStats`:
+  - [ ] packets/sec + packetsTotal
+  - [ ] decodeErrors
+  - [ ] bufferedMs
+  - [ ] overflows + underruns
+- [ ] Implement `ReceiverEngine`:
+  - [ ] `StartAsync(ReceiverConfig)`
+  - [ ] `StopAsync()`
+  - [ ] events/callbacks: `OnStats`, `OnLog`, `OnStateChanged`
+
+**Done when:** UI and CLI can control the receiver with the same API.
+
+### 1.7.3 Audio device enumeration + selection (Core)
+- [ ] Expose render device list (id + friendly name)
+- [ ] Default selection strategy:
+  - [ ] prefer devices matching "CABLE Input"
+  - [ ] fallback to default render device
+- [ ] Support “refresh devices” (re-enumerate)
+- [ ] Handle device hot-unplug gracefully (stop with error, show message, allow reselect)
+
+**Done when:** GUI dropdown works and selection persists across restarts.
+
+### 1.7.4 Performance / CPU spike fixes (Core)
+- [ ] Eliminate per-packet allocations in the receive/decode loop:
+  - [ ] remove `pcmBytes.ToArray()` usage
+  - [ ] replace `new byte[...]` per packet with reusable buffer or `ArrayPool<byte>`
+- [ ] Keep decoded sample buffers reused (no per-frame `short[]` allocations)
+- [ ] Throttle stats publishing to a fixed cadence (e.g., 4–10 updates/sec) independent of packet rate
+- [ ] Optional: record GC collection counts for diagnostics
+
+**Done when:** allocations per packet are ~0 (verified by profiler) and CPU spikes reduce.
+
+### 1.7.5 Build WPF GUI (MVVM)
+- [ ] Main controls:
+  - [ ] Start / Stop
+  - [ ] Listen port
+  - [ ] Output device dropdown + Refresh button
+  - [ ] outputLatencyMs + bufferLengthMs
+  - [ ] Presets: Low-latency / Balanced / Stable
+  - [ ] Test tone button
+- [ ] Status + diagnostics panel:
+  - [ ] state (Stopped / Starting / Running / Error)
+  - [ ] packets/sec, decodeErrors, bufferedMs, overflows, underruns
+- [ ] Log panel:
+  - [ ] filter by level (Info/Warn/Error)
+  - [ ] copy logs to clipboard
+  - [ ] open log folder
+
+**Done when:** user can run the receiver end-to-end without opening a terminal.
+
+### 1.7.6 Settings persistence
+- [ ] Save/load settings:
+  - [ ] `%AppData%\phone-mic-dsp\settings.json`
+- [ ] Persist: last port, selected device, latency/buffer, lockSenderIp, window state
+- [ ] Add “Reset to defaults” button
+
+**Done when:** app reopens with previous settings and can start immediately.
+
+### 1.7.7 Tray + Startup behavior
+- [ ] Minimize-to-tray option (receiver keeps running)
+- [ ] Tray menu: Show/Hide, Start/Stop, Exit
+- [ ] “Run at startup” toggle (CurrentUser Startup or registry)
+
+**Done when:** receiver can run in background reliably.
+
+### 1.7.8 Packaging (“double-click software”)
+- [ ] Add publish profiles:
+  - [ ] portable build
+  - [ ] single-file build
+  - [ ] self-contained build (optional)
+- [ ] Optional installer:
+  - [ ] MSIX or MSI (WiX)
+- [ ] Versioning:
+  - [ ] show version in UI
+  - [ ] update CHANGELOG for releases
+
+**Done when:** you can distribute a build that runs on a fresh Windows machine without `dotnet run`.
+
+
 ## Phase 2 — Android Sender MVP (Capture + Stream)
 
 > Goal: Android app captures via DSP pipeline and streams Opus over UDP to Windows receiver.
@@ -244,6 +345,14 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 - [ ] `/docs/discord-settings.md`
   - [ ] input device selection
   - [ ] suggested toggles
+- [x] `/docs/windows-desktop-app.md`
+  - [x] GUI usage + field meanings
+  - [x] diagnostics + logs location
+- [x] `/docs/windows-packaging.md`
+  - [x] publish commands (framework-dependent + self-contained + single-file)
+  - [x] optional installer notes (MSIX/MSI)
+- [x] `/docs/windows-performance.md`
+  - [x] CPU spike causes (allocations/GC) + verification steps
 - [ ] `/docs/troubleshooting.md`
   - [ ] silent mic
   - [ ] device not found
