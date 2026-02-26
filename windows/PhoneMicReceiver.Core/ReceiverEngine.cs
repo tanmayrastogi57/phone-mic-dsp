@@ -8,6 +8,12 @@ using NAudio.Wave;
 
 namespace PhoneMicReceiver.Core;
 
+public sealed record RenderDeviceInfo(
+    string Id,
+    string FriendlyName,
+    bool IsDefault,
+    bool MatchesPreferredSubstring);
+
 public enum ReceiverState
 {
     Stopped,
@@ -43,6 +49,22 @@ public sealed class ReceiverEngine : IAsyncDisposable
     public event Action<ReceiverStats>? OnStats;
     public event Action<string>? OnLog;
     public event Action<ReceiverState>? OnStateChanged;
+
+    public static IReadOnlyList<RenderDeviceInfo> GetRenderDevices(string preferredSubstring = ReceiverConfig.DefaultDeviceSubstring)
+    {
+        using var enumerator = new MMDeviceEnumerator();
+        string? defaultDeviceId = TryGetDefaultRenderDeviceId(enumerator);
+        var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
+            .OrderBy(device => device.FriendlyName)
+            .Select(device => new RenderDeviceInfo(
+                Id: device.ID,
+                FriendlyName: device.FriendlyName,
+                IsDefault: string.Equals(device.ID, defaultDeviceId, StringComparison.OrdinalIgnoreCase),
+                MatchesPreferredSubstring: device.FriendlyName.Contains(preferredSubstring, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        return devices;
+    }
 
     public async Task StartAsync(ReceiverConfig config, CancellationToken cancellationToken = default)
     {
@@ -133,7 +155,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 throw new InvalidOperationException("No active render audio devices were found.");
             }
 
-            var selectedDevice = SelectRenderDevice(config, renderDevices);
+            var selectedDevice = SelectRenderDevice(config, enumerator, renderDevices, out bool selectedByFallback);
 
             if (config.Channels == 2 && selectedDevice.AudioClient.MixFormat.Channels < 2)
             {
@@ -167,6 +189,10 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 output.Play();
 
                 Log($"Selected output device: {selectedDevice.FriendlyName}");
+                if (selectedByFallback)
+                {
+                    Log($"Preferred device substring \"{config.DeviceSubstring}\" was not found. Falling back to default render device.");
+                }
                 Log($"Device preferred mix format: {DescribeWaveFormat(deviceMixFormat)}");
                 Log($"Internal decode format: {DescribeWaveFormat(internalFloatFormat)}");
                 Log($"Render format path: {(resampler is null ? "direct" : "MediaFoundationResampler -> device mix format")}");
@@ -179,7 +205,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
                     Log($"Queued {config.TestToneSeconds}s test tone at 440 Hz.");
                 }
 
-                await ReceiveUdpOpusAsync(config, bufferedWaveProvider, cancellationToken);
+                await ReceiveUdpOpusAsync(config, enumerator, selectedDevice.ID, bufferedWaveProvider, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -194,8 +220,21 @@ public sealed class ReceiverEngine : IAsyncDisposable
         }
     }
 
-    private async Task ReceiveUdpOpusAsync(ReceiverConfig config, BufferedWaveProvider bufferedWaveProvider, CancellationToken cancellationToken)
+    private async Task ReceiveUdpOpusAsync(
+        ReceiverConfig config,
+        MMDeviceEnumerator enumerator,
+        string selectedDeviceId,
+        BufferedWaveProvider bufferedWaveProvider,
+        CancellationToken cancellationToken)
     {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bool deviceDisconnected = false;
+        var monitorTask = MonitorSelectedDeviceAsync(enumerator, selectedDeviceId, () =>
+        {
+            deviceDisconnected = true;
+            linkedCts.Cancel();
+        }, linkedCts.Token);
+
         using var udpClient = new UdpClient(new IPEndPoint(IPAddress.Parse(config.BindAddress), config.ListenPort));
         var opusDecoder = OpusDecoder.Create(ReceiverConfig.SampleRate, config.Channels);
         var statsWindow = Stopwatch.StartNew();
@@ -223,12 +262,12 @@ public sealed class ReceiverEngine : IAsyncDisposable
         long reorderedPackets = 0;
         IPAddress? lockedSenderIp = config.LockToSenderIp;
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (!linkedCts.Token.IsCancellationRequested)
         {
             UdpReceiveResult packet;
             try
             {
-                packet = await udpClient.ReceiveAsync(cancellationToken);
+                packet = await udpClient.ReceiveAsync(linkedCts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -346,10 +385,27 @@ public sealed class ReceiverEngine : IAsyncDisposable
             LatePacketsDropped: latePacketsDropped,
             MissingPacketsSkipped: missingPacketsSkipped));
         Log($"Receiver stopped. packetsTotal={packetsTotal}, decodeErrors={decodeErrors}, malformed={malformedPackets}, reordered={reorderedPackets}, lateDrops={latePacketsDropped}, missingSkips={missingPacketsSkipped}, overflows={overflows}, underruns={underruns}");
+
+        linkedCts.Cancel();
+        try
+        {
+            await monitorTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // expected during normal stop
+        }
+
+        if (deviceDisconnected)
+        {
+            throw new InvalidOperationException("Selected output device was disconnected. Re-select an active render device and start the receiver again.");
+        }
     }
 
-    private static MMDevice SelectRenderDevice(ReceiverConfig config, IReadOnlyList<MMDevice> renderDevices)
+    private static MMDevice SelectRenderDevice(ReceiverConfig config, MMDeviceEnumerator enumerator, IReadOnlyList<MMDevice> renderDevices, out bool selectedByFallback)
     {
+        selectedByFallback = false;
+
         if (!string.IsNullOrWhiteSpace(config.DeviceId))
         {
             var exact = renderDevices.FirstOrDefault(d => string.Equals(d.ID, config.DeviceId, StringComparison.OrdinalIgnoreCase));
@@ -369,8 +425,73 @@ public sealed class ReceiverEngine : IAsyncDisposable
             return bySubstring;
         }
 
+        var fallbackDevice = TryGetDefaultRenderDevice(enumerator, renderDevices);
+        if (fallbackDevice is not null)
+        {
+            selectedByFallback = true;
+            return fallbackDevice;
+        }
+
         var availableDevices = string.Join(Environment.NewLine, renderDevices.Select(device => $"- {device.FriendlyName}"));
         throw new InvalidOperationException($"No render device matched substring \"{config.DeviceSubstring}\".{Environment.NewLine}Available render devices:{Environment.NewLine}{availableDevices}");
+    }
+
+    private async Task MonitorSelectedDeviceAsync(MMDeviceEnumerator enumerator, string selectedDeviceId, Action onDisconnected, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (!IsDeviceActive(enumerator, selectedDeviceId))
+            {
+                Log("Selected output device is no longer available. Stopping receiver.");
+                onDisconnected();
+                return;
+            }
+        }
+    }
+
+    private static bool IsDeviceActive(MMDeviceEnumerator enumerator, string deviceId)
+    {
+        try
+        {
+            var device = enumerator.GetDevice(deviceId);
+            return device.State == DeviceState.Active;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static MMDevice? TryGetDefaultRenderDevice(MMDeviceEnumerator enumerator, IReadOnlyList<MMDevice> activeDevices)
+    {
+        string? defaultDeviceId = TryGetDefaultRenderDeviceId(enumerator);
+        if (defaultDeviceId is null)
+        {
+            return null;
+        }
+
+        return activeDevices.FirstOrDefault(device => string.Equals(device.ID, defaultDeviceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? TryGetDefaultRenderDeviceId(MMDeviceEnumerator enumerator)
+    {
+        try
+        {
+            return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).ID;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void PublishStats(ReceiverStats stats)

@@ -3,11 +3,36 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Phone Mic Receiver"
         Height="220"
-        Width="420">
+        Width="520">
     <Grid Margin="16">
-        <TextBlock
-            TextWrapping="Wrap"
-            Text="PhoneMicReceiver.App scaffold created in task 1.7.1. GUI wiring to ReceiverEngine/Core is tracked in later tasks."
-            VerticalAlignment="Center" />
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">Output device</TextBlock>
+        <ComboBox
+            x:Name="DeviceComboBox"
+            Grid.Row="0"
+            Grid.Column="1"
+            DisplayMemberPath="FriendlyName"
+            SelectedValuePath="Id"
+            Margin="0,0,10,0"
+            SelectionChanged="DeviceComboBox_OnSelectionChanged" />
+        <Button
+            Grid.Row="0"
+            Grid.Column="2"
+            Content="Refresh"
+            Padding="14,4"
+            Click="RefreshDevices_OnClick" />
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0" Text="Selection behavior: prefer CABLE Input, then fallback to default render device." />
+        <TextBlock x:Name="StatusTextBlock" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0" TextWrapping="Wrap" />
     </Grid>
 </Window>

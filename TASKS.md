@@ -134,14 +134,16 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 _Status: Implemented `ReceiverEngine` API with shared config/stats/events in Core and switched CLI control flow to `StartAsync`/`StopAsync`; WPF wiring remains scaffolded for later UI tasks._
 
 ### 1.7.3 Audio device enumeration + selection (Core)
-- [ ] Expose render device list (id + friendly name)
-- [ ] Default selection strategy:
-  - [ ] prefer devices matching "CABLE Input"
-  - [ ] fallback to default render device
-- [ ] Support “refresh devices” (re-enumerate)
-- [ ] Handle device hot-unplug gracefully (stop with error, show message, allow reselect)
+- [x] Expose render device list (id + friendly name)
+- [x] Default selection strategy:
+  - [x] prefer devices matching "CABLE Input"
+  - [x] fallback to default render device
+- [x] Support “refresh devices” (re-enumerate)
+- [x] Handle device hot-unplug gracefully (stop with error, show message, allow reselect)
 
 **Done when:** GUI dropdown works and selection persists across restarts.
+
+_Status: Implemented Core render-device enumeration/fallback/hot-unplug handling and wired WPF dropdown refresh + persisted device selection to AppData._
 
 ### 1.7.4 Performance / CPU spike fixes (Core)
 - [ ] Eliminate per-packet allocations in the receive/decode loop:
