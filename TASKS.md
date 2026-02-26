@@ -102,12 +102,12 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Goal: replace command-line usage with a Windows GUI app and refactor the receiver into a reusable Core library, while keeping the Android↔Windows streaming protocol unchanged.
 
 ### 1.7.1 Refactor Windows into Core + CLI + GUI projects
-- [ ] Create projects:
-  - [ ] `windows/PhoneMicReceiver.Core` (class library)
-  - [ ] `windows/PhoneMicReceiver.Cli` (console wrapper; recommended for debugging)
-  - [ ] `windows/PhoneMicReceiver.App` (WPF GUI)
-- [ ] Move current receiver logic out of `Program.cs` into Core classes (network + Opus decode + audio sink)
-- [ ] Keep CLI behavior working by calling Core (no duplicate logic)
+- [x] Create projects:
+  - [x] `windows/PhoneMicReceiver.Core` (class library)
+  - [x] `windows/PhoneMicReceiver.Cli` (console wrapper; recommended for debugging)
+  - [x] `windows/PhoneMicReceiver.App` (WPF GUI)
+- [x] Move current receiver logic out of `Program.cs` into Core classes (network + Opus decode + audio sink)
+- [x] Keep CLI behavior working by calling Core (no duplicate logic)
 
 **Done when:** `dotnet build` succeeds and CLI can still receive Opus and play to VB-CABLE.
 
