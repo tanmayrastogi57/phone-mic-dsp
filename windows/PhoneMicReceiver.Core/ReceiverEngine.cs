@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
@@ -34,6 +35,34 @@ public sealed record ReceiverStats(
     long ReorderedPackets,
     long LatePacketsDropped,
     long MissingPacketsSkipped);
+
+internal sealed class PooledPacket : IDisposable
+{
+    private byte[]? _buffer;
+
+    public PooledPacket(byte[] buffer, int length)
+    {
+        _buffer = buffer;
+        Length = length;
+    }
+
+    public int Length { get; }
+
+    public ReadOnlySpan<byte> Span => _buffer is null
+        ? ReadOnlySpan<byte>.Empty
+        : _buffer.AsSpan(0, Length);
+
+    public void Dispose()
+    {
+        if (_buffer is null)
+        {
+            return;
+        }
+
+        ArrayPool<byte>.Shared.Return(_buffer);
+        _buffer = null;
+    }
+}
 
 public sealed class ReceiverEngine : IAsyncDisposable
 {
@@ -237,7 +266,8 @@ public sealed class ReceiverEngine : IAsyncDisposable
 
         using var udpClient = new UdpClient(new IPEndPoint(IPAddress.Parse(config.BindAddress), config.ListenPort));
         var opusDecoder = OpusDecoder.Create(ReceiverConfig.SampleRate, config.Channels);
-        var statsWindow = Stopwatch.StartNew();
+        using var statsCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
+        const int statsIntervalMs = 250;
         bool bufferPrimed = false;
 
         const int frameSize = 960;
@@ -247,7 +277,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
         var floatSamples = new float[frameSize * config.Channels];
         var pcmFloatBytes = new byte[frameSize * config.Channels * sizeof(float)];
         int jitterTargetPackets = Math.Max(1, (int)Math.Ceiling(config.JitterTargetDelayMs / (double)frameDurationMs));
-        var jitterBuffer = new SequenceJitterBuffer(jitterTargetPackets, maxBufferedPackets: 200);
+        using var jitterBuffer = new SequenceJitterBuffer(jitterTargetPackets, maxBufferedPackets: 200);
 
         Log($"Listening for UDP Opus packets on {config.BindAddress}:{config.ListenPort} with jitter target={jitterTargetPackets} packets...");
 
@@ -261,6 +291,42 @@ public sealed class ReceiverEngine : IAsyncDisposable
         long missingPacketsSkipped = 0;
         long reorderedPackets = 0;
         IPAddress? lockedSenderIp = config.LockToSenderIp;
+
+        var statsTask = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(statsIntervalMs));
+                while (await timer.WaitForNextTickAsync(statsCts.Token))
+                {
+                    long windowPackets = Interlocked.Exchange(ref packetsThisWindow, 0);
+                    long packetsPerSecond = windowPackets * 1000 / statsIntervalMs;
+                    double bufferedMs = bufferedWaveProvider.BufferedDuration.TotalMilliseconds;
+
+                    if (bufferPrimed && bufferedMs < 10)
+                    {
+                        long underrunEvent = Interlocked.Increment(ref underruns);
+                        Log($"[buffer] underrun risk; buffered={bufferedMs:F1}ms (event #{underrunEvent}).");
+                    }
+
+                    PublishStats(new ReceiverStats(
+                        PacketsPerSecond: packetsPerSecond,
+                        PacketsTotal: Interlocked.Read(ref packetsTotal),
+                        DecodeErrors: Interlocked.Read(ref decodeErrors),
+                        BufferedMs: bufferedMs,
+                        Overflows: Interlocked.Read(ref overflows),
+                        Underruns: Interlocked.Read(ref underruns),
+                        MalformedPackets: Interlocked.Read(ref malformedPackets),
+                        ReorderedPackets: Interlocked.Read(ref reorderedPackets),
+                        LatePacketsDropped: Interlocked.Read(ref latePacketsDropped),
+                        MissingPacketsSkipped: Interlocked.Read(ref missingPacketsSkipped)));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // expected on stop
+            }
+        }, linkedCts.Token);
 
         while (!linkedCts.Token.IsCancellationRequested)
         {
@@ -285,39 +351,44 @@ public sealed class ReceiverEngine : IAsyncDisposable
             }
 
             var packetBuffer = packet.Buffer;
-            packetsThisWindow++;
-            packetsTotal++;
+            Interlocked.Increment(ref packetsThisWindow);
+            Interlocked.Increment(ref packetsTotal);
 
             if (packetBuffer.Length <= packetHeaderLengthBytes)
             {
-                malformedPackets++;
+                Interlocked.Increment(ref malformedPackets);
                 continue;
             }
 
             uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packetBuffer.AsSpan(0, 4));
             uint timestampMs = BinaryPrimitives.ReadUInt32BigEndian(packetBuffer.AsSpan(4, 4));
-            var opusPayload = packetBuffer.AsSpan(packetHeaderLengthBytes).ToArray();
+            int payloadLength = packetBuffer.Length - packetHeaderLengthBytes;
+            byte[] pooledPayloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+            packetBuffer.AsSpan(packetHeaderLengthBytes, payloadLength).CopyTo(pooledPayloadBuffer);
+            var opusPayload = new PooledPacket(pooledPayloadBuffer, payloadLength);
 
             var enqueueOutcome = jitterBuffer.Enqueue(sequence, timestampMs, opusPayload);
             if (enqueueOutcome == EnqueueOutcome.Reordered)
             {
-                reorderedPackets++;
+                Interlocked.Increment(ref reorderedPackets);
             }
             else if (enqueueOutcome == EnqueueOutcome.LateDropped)
             {
-                latePacketsDropped++;
+                Interlocked.Increment(ref latePacketsDropped);
             }
 
             while (jitterBuffer.TryDequeue(out var nextPayload, out int skipped))
             {
+                using (nextPayload)
+                {
                 if (skipped > 0)
                 {
-                    missingPacketsSkipped += skipped;
+                    Interlocked.Add(ref missingPacketsSkipped, skipped);
                 }
 
                 try
                 {
-                    int decodedFrameCount = opusDecoder.Decode(nextPayload, 0, nextPayload.Length, decodedSamples, 0, frameSize, false);
+                    int decodedFrameCount = opusDecoder.Decode(nextPayload.Span, decodedSamples, frameSize, false);
                     int totalSamples = decodedFrameCount * config.Channels;
                     if (totalSamples <= 0)
                     {
@@ -334,8 +405,8 @@ public sealed class ReceiverEngine : IAsyncDisposable
 
                     if (bufferedWaveProvider.BufferedBytes + floatBytesCount > bufferedWaveProvider.BufferLength)
                     {
-                        overflows++;
-                        Log($"[buffer] overflow predicted; dropping oldest samples (event #{overflows}).");
+                        long overflowEvent = Interlocked.Increment(ref overflows);
+                        Log($"[buffer] overflow predicted; dropping oldest samples (event #{overflowEvent}).");
                     }
 
                     bufferedWaveProvider.AddSamples(pcmFloatBytes, 0, floatBytesCount);
@@ -343,48 +414,27 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 }
                 catch (Exception)
                 {
-                    decodeErrors++;
+                    Interlocked.Increment(ref decodeErrors);
                 }
-            }
-
-            if (statsWindow.ElapsedMilliseconds >= 1_000)
-            {
-                double bufferedMs = bufferedWaveProvider.BufferedDuration.TotalMilliseconds;
-                if (bufferPrimed && bufferedMs < 10)
-                {
-                    underruns++;
-                    Log($"[buffer] underrun risk; buffered={bufferedMs:F1}ms (event #{underruns}).");
                 }
-
-                PublishStats(new ReceiverStats(
-                    PacketsPerSecond: packetsThisWindow,
-                    PacketsTotal: packetsTotal,
-                    DecodeErrors: decodeErrors,
-                    BufferedMs: bufferedMs,
-                    Overflows: overflows,
-                    Underruns: underruns,
-                    MalformedPackets: malformedPackets,
-                    ReorderedPackets: reorderedPackets,
-                    LatePacketsDropped: latePacketsDropped,
-                    MissingPacketsSkipped: missingPacketsSkipped));
-
-                packetsThisWindow = 0;
-                statsWindow.Restart();
             }
         }
 
+        statsCts.Cancel();
+        await statsTask;
+
         PublishStats(new ReceiverStats(
             PacketsPerSecond: 0,
-            PacketsTotal: packetsTotal,
-            DecodeErrors: decodeErrors,
+            PacketsTotal: Interlocked.Read(ref packetsTotal),
+            DecodeErrors: Interlocked.Read(ref decodeErrors),
             BufferedMs: bufferedWaveProvider.BufferedDuration.TotalMilliseconds,
-            Overflows: overflows,
-            Underruns: underruns,
-            MalformedPackets: malformedPackets,
-            ReorderedPackets: reorderedPackets,
-            LatePacketsDropped: latePacketsDropped,
-            MissingPacketsSkipped: missingPacketsSkipped));
-        Log($"Receiver stopped. packetsTotal={packetsTotal}, decodeErrors={decodeErrors}, malformed={malformedPackets}, reordered={reorderedPackets}, lateDrops={latePacketsDropped}, missingSkips={missingPacketsSkipped}, overflows={overflows}, underruns={underruns}");
+            Overflows: Interlocked.Read(ref overflows),
+            Underruns: Interlocked.Read(ref underruns),
+            MalformedPackets: Interlocked.Read(ref malformedPackets),
+            ReorderedPackets: Interlocked.Read(ref reorderedPackets),
+            LatePacketsDropped: Interlocked.Read(ref latePacketsDropped),
+            MissingPacketsSkipped: Interlocked.Read(ref missingPacketsSkipped)));
+        Log($"Receiver stopped. packetsTotal={Interlocked.Read(ref packetsTotal)}, decodeErrors={Interlocked.Read(ref decodeErrors)}, malformed={Interlocked.Read(ref malformedPackets)}, reordered={Interlocked.Read(ref reorderedPackets)}, lateDrops={Interlocked.Read(ref latePacketsDropped)}, missingSkips={Interlocked.Read(ref missingPacketsSkipped)}, overflows={Interlocked.Read(ref overflows)}, underruns={Interlocked.Read(ref underruns)}");
 
         linkedCts.Cancel();
         try
@@ -555,9 +605,9 @@ internal enum EnqueueOutcome
     LateDropped
 }
 
-internal sealed class SequenceJitterBuffer
+internal sealed class SequenceJitterBuffer : IDisposable
 {
-    private readonly SortedDictionary<uint, byte[]> _buffer = new();
+    private readonly SortedDictionary<uint, PooledPacket> _buffer = new();
     private readonly int _targetDelayPackets;
     private readonly int _maxBufferedPackets;
     private uint? _expectedSequence;
@@ -571,23 +621,33 @@ internal sealed class SequenceJitterBuffer
 
     public int BufferedPackets => _buffer.Count;
 
-    public EnqueueOutcome Enqueue(uint sequence, uint _timestampMs, byte[] payload)
+    public EnqueueOutcome Enqueue(uint sequence, uint _timestampMs, PooledPacket payload)
     {
         _expectedSequence ??= sequence;
 
         if (_expectedSequence.HasValue && SequenceLessThan(sequence, _expectedSequence.Value))
         {
+            payload.Dispose();
             return EnqueueOutcome.LateDropped;
         }
 
         bool reordered = _lastEnqueuedSequence.HasValue && SequenceLessThan(sequence, _lastEnqueuedSequence.Value);
         _lastEnqueuedSequence = sequence;
+
+        if (_buffer.Remove(sequence, out var existing))
+        {
+            existing.Dispose();
+        }
+
         _buffer[sequence] = payload;
 
         while (_buffer.Count > _maxBufferedPackets)
         {
             uint oldest = _buffer.Keys.First();
-            _buffer.Remove(oldest);
+            if (_buffer.Remove(oldest, out var dropped))
+            {
+                dropped.Dispose();
+            }
             if (_expectedSequence.HasValue && oldest == _expectedSequence.Value)
             {
                 _expectedSequence = oldest + 1;
@@ -597,9 +657,9 @@ internal sealed class SequenceJitterBuffer
         return reordered ? EnqueueOutcome.Reordered : EnqueueOutcome.Accepted;
     }
 
-    public bool TryDequeue(out byte[] payload, out int skippedMissingPackets)
+    public bool TryDequeue(out PooledPacket payload, out int skippedMissingPackets)
     {
-        payload = Array.Empty<byte>();
+        payload = default!;
         skippedMissingPackets = 0;
 
         if (!_expectedSequence.HasValue || _buffer.Count < _targetDelayPackets)
@@ -631,6 +691,16 @@ internal sealed class SequenceJitterBuffer
                 return false;
             }
         }
+    }
+
+    public void Dispose()
+    {
+        foreach (var entry in _buffer.Values)
+        {
+            entry.Dispose();
+        }
+
+        _buffer.Clear();
     }
 
     private static bool SequenceLessThan(uint left, uint right) => unchecked((int)(left - right)) < 0;
