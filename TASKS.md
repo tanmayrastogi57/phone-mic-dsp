@@ -313,8 +313,8 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 - [ ] Expose config:
   - [ ] `latencyMs`
   - [ ] `bufferMs`
-- [ ] Provide recommended presets:
-  - [ ] Low-latency (higher stutter risk)
+- [x] Provide recommended presets:
+  - [x] Low-latency (higher stutter risk)
   - [ ] Balanced (default)
   - [ ] Stable (higher latency)
 
@@ -381,49 +381,57 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 > Only start these after MVP is stable.
 
 ### 6.1 Improve Opus quality (highest impact)
-- [ ] Add encoder config UI/flags:
-  - [ ] bitrate (32–128 kbps)
-  - [ ] complexity (0–10)
-  - [ ] frame duration (10/20ms)
-  - [ ] FEC on/off
-  - [ ] expected packet loss %
-- [ ] Provide recommended presets:
-  - [ ] Voice-clean (default)
-  - [ ] High-quality voice
-  - [ ] Low-latency
+- [x] Add encoder config UI/flags:
+  - [x] bitrate (32–128 kbps)
+  - [x] complexity (0–10)
+  - [x] frame duration (10/20ms)
+  - [x] FEC on/off
+  - [x] expected packet loss %
+- [x] Provide recommended presets:
+  - [x] Voice-clean (default)
+  - [x] High-quality voice
+  - [x] Low-latency
 
 **Done when:** quality improves without instability.
 
+_Status: Implemented UI/config plumbing and presets; runtime quality tuning still requires device validation._
+
 ### 6.2 Add packet header + jitter buffer
-- [ ] Define header:
-  - [ ] sequence (uint32)
-  - [ ] timestamp (uint32 optional)
-- [ ] Implement jitter buffer on Windows:
-  - [ ] reorder packets
-  - [ ] drop late packets
-  - [ ] target playout delay configurable
+- [x] Define header:
+  - [x] sequence (uint32)
+  - [x] timestamp (uint32 optional)
+- [x] Implement jitter buffer on Windows:
+  - [x] reorder packets
+  - [x] drop late packets
+  - [x] target playout delay configurable
 
 **Done when:** stutters reduce under jitter.
 
+_Status: Added 8-byte UDP header (sequence + timestamp) on Android and sequence-based jitter buffer with reordering/late-drop logic on Windows; playout delay configurable via CLI._
+
 ### 6.3 Stereo support (only if necessary)
-- [ ] Detect if Android capture supports stereo
-- [ ] Add stereo toggle:
-  - [ ] channels = 2
-  - [ ] adjust Opus config (bitrate 96–128 kbps)
-- [ ] Ensure Windows output device supports stereo
-- [ ] Document Discord behavior (may downmix)
+- [x] Detect if Android capture supports stereo
+- [x] Add stereo toggle:
+  - [x] channels = 2
+  - [x] adjust Opus config (bitrate 96–128 kbps)
+- [x] Ensure Windows output device supports stereo
+- [x] Document Discord behavior (may downmix)
+
+_Status: Added Android stereo capability detection + toggle with mono fallback, stereo channel config propagation into Opus capture/encoding, and Windows receiver channel argument with stereo mix-format validation. README includes stereo run guidance and Discord downmix caveat._
 
 **Done when:** stereo runs end-to-end without breakage.
 
 ### 6.4 >16-bit output on Windows (format upgrades)
-- [ ] Add support guidance for:
-  - [ ] VB-CABLE Hi-Fi or VoiceMeeter
-- [ ] Allow WASAPI format negotiation:
-  - [ ] output float32 internally
-  - [ ] render to device preferred format
-- [ ] Document how to set device format in Windows
+- [x] Add support guidance for:
+  - [x] VB-CABLE Hi-Fi or VoiceMeeter
+- [x] Allow WASAPI format negotiation:
+  - [x] output float32 internally
+  - [x] render to device preferred format
+- [x] Document how to set device format in Windows
 
 **Done when:** system can output 24-bit if device supports it.
+
+_Status: Windows receiver now decodes to float32 internally, negotiates to the selected WASAPI mix format (with MediaFoundation resampler when needed), and docs now include VB-CABLE Hi-Fi / VoiceMeeter plus Windows device format setup steps._
 
 ### 6.5 Optional security
 - [ ] Add AES-GCM encryption with pre-shared key

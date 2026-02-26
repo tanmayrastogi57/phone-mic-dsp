@@ -54,6 +54,29 @@ CAMCORDER: tuned for video recording mic/orientation</string>
     <string name="dsp_effect_disabled">disabled</string>
     <string name="dsp_effect_unavailable">unavailable</string>
     <string name="dsp_status_effect_summary_format">AEC=%1$s, NS=%2$s, AGC=%3$s</string>
+    <string name="opus_preset_label">Opus Preset</string>
+    <string name="opus_preset_voice_clean">Voice-clean (default)</string>
+    <string name="opus_preset_high_quality">High-quality voice</string>
+    <string name="opus_preset_low_latency">Low-latency</string>
+    <string name="opus_bitrate_label">Bitrate</string>
+    <string name="opus_bitrate_default_value">48 kbps</string>
+    <string name="opus_bitrate_value_format">%1$d kbps</string>
+    <string name="opus_complexity_label">Complexity</string>
+    <string name="opus_complexity_default_value">8</string>
+    <string name="opus_complexity_value_format">%1$d</string>
+    <string name="opus_packet_loss_label">Expected packet loss</string>
+    <string name="opus_packet_loss_default_value">0%%</string>
+    <string name="opus_packet_loss_value_format">%1$d%%</string>
+    <string name="opus_frame_duration_label">Frame duration</string>
+    <string name="opus_frame_duration_10ms">10 ms</string>
+    <string name="opus_frame_duration_20ms">20 ms</string>
+    <string name="opus_fec_label">Opus in-band FEC</string>
+
+    <string name="stereo_toggle_label">Stereo capture (experimental)</string>
+    <string name="stereo_status_unknown">Stereo support: checking selected microphone</string>
+    <string name="stereo_status_supported">Stereo support: available on selected microphone</string>
+    <string name="stereo_status_not_supported">Stereo support: unavailable on selected microphone (mono will be used)</string>
+    <string name="stereo_status_not_supported_platform">Stereo support: unavailable on this Android version (mono will be used)</string>
     <string name="streaming_channel_name">Phone Mic Streaming</string>
     <string name="streaming_channel_description">Keeps Android microphone streaming alive in the foreground.</string>
     <string name="streaming_notification_title">Phone Mic streaming service</string>

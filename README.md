@@ -11,7 +11,7 @@ Discord on Android sounds clean because Android uses a voice-communication audio
 **Pipeline:**
 1. Android captures mic audio using `VOICE_COMMUNICATION` + `MODE_IN_COMMUNICATION`
 2. Android encodes audio to **Opus** (48kHz, mono, 20ms frames)
-3. Android sends Opus frames via **UDP** over **USB tethering**
+3. Android sends Opus frames via **UDP** over **USB tethering** (each datagram includes an 8-byte header: sequence + timestamp)
 4. Windows receiver (C#) decodes Opus and plays it into **VB-CABLE** (“CABLE Input” render device)
 5. Discord uses **“CABLE Output”** as the microphone input
 
@@ -76,3 +76,22 @@ ipconfig
   - **CAMCORDER**: closest to video-recording mic/orientation behavior; can improve low volume on some devices
 - You can switch modes while streaming. The app performs a short hot restart of `AudioRecord` (brief glitch expected) while keeping Opus/UDP protocol unchanged.
 - OEM audio routing differs by phone model/firmware. **CAMCORDER is best-effort** and may not map to the same physical mic on every device.
+
+
+
+## Windows >16-bit output path (Task 6.4)
+- The Windows receiver now decodes to **float32 internally** and negotiates to the selected device's preferred WASAPI mix format.
+- To use 24-bit/32-bit virtual routes, see **`docs/windows-format-upgrades.md`** for VB-CABLE Hi-Fi / VoiceMeeter guidance and Windows device format setup.
+- Startup logs print both internal and device formats so you can confirm negotiation behavior.
+
+## Stereo mode (optional, Task 6.3)
+- The Android app now detects whether the selected microphone reports stereo input channels.
+- Enable **Stereo capture (experimental)** only when the app shows stereo support is available for the selected mic.
+- Stereo sends **2-channel Opus** and usually benefits from **96–128 kbps** bitrate.
+- Start the Windows receiver with an explicit channels argument of `2` to decode stereo:
+
+```powershell
+dotnet run --project windows/PhoneMicReceiver -- 5555 "CABLE Input" 50 500 0 60 2
+```
+
+Discord may still downmix or otherwise process incoming stereo to mono depending on client/server behavior.
