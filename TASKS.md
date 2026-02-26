@@ -156,20 +156,20 @@ _Status: Implemented Core render-device enumeration/fallback/hot-unplug handling
 **Done when:** allocations per packet are ~0 (verified by profiler) and CPU spikes reduce.
 
 ### 1.7.5 Build WPF GUI (MVVM)
-- [ ] Main controls:
-  - [ ] Start / Stop
-  - [ ] Listen port
-  - [ ] Output device dropdown + Refresh button
-  - [ ] outputLatencyMs + bufferLengthMs
-  - [ ] Presets: Low-latency / Balanced / Stable
-  - [ ] Test tone button
-- [ ] Status + diagnostics panel:
-  - [ ] state (Stopped / Starting / Running / Error)
-  - [ ] packets/sec, decodeErrors, bufferedMs, overflows, underruns
-- [ ] Log panel:
-  - [ ] filter by level (Info/Warn/Error)
-  - [ ] copy logs to clipboard
-  - [ ] open log folder
+- [x] Main controls:
+  - [x] Start / Stop
+  - [x] Listen port
+  - [x] Output device dropdown + Refresh button
+  - [x] outputLatencyMs + bufferLengthMs
+  - [x] Presets: Low-latency / Balanced / Stable
+  - [x] Test tone button
+- [x] Status + diagnostics panel:
+  - [x] state (Stopped / Starting / Running / Error)
+  - [x] packets/sec, decodeErrors, bufferedMs, overflows, underruns
+- [x] Log panel:
+  - [x] filter by level (Info/Warn/Error)
+  - [x] copy logs to clipboard
+  - [x] open log folder
 
 **Done when:** user can run the receiver end-to-end without opening a terminal.
 
