@@ -11,7 +11,7 @@ Discord on Android sounds clean because Android uses a voice-communication audio
 **Pipeline:**
 1. Android captures mic audio using `VOICE_COMMUNICATION` + `MODE_IN_COMMUNICATION`
 2. Android encodes audio to **Opus** (48kHz, mono, 20ms frames)
-3. Android sends Opus frames via **UDP** over **USB tethering**
+3. Android sends Opus frames via **UDP** over **USB tethering** (each datagram includes an 8-byte header: sequence + timestamp)
 4. Windows receiver (C#) decodes Opus and plays it into **VB-CABLE** (“CABLE Input” render device)
 5. Discord uses **“CABLE Output”** as the microphone input
 

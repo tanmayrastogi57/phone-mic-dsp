@@ -288,15 +288,17 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 _Status: Implemented UI/config plumbing and presets; runtime quality tuning still requires device validation._
 
 ### 6.2 Add packet header + jitter buffer
-- [ ] Define header:
-  - [ ] sequence (uint32)
-  - [ ] timestamp (uint32 optional)
-- [ ] Implement jitter buffer on Windows:
-  - [ ] reorder packets
-  - [ ] drop late packets
-  - [ ] target playout delay configurable
+- [x] Define header:
+  - [x] sequence (uint32)
+  - [x] timestamp (uint32 optional)
+- [x] Implement jitter buffer on Windows:
+  - [x] reorder packets
+  - [x] drop late packets
+  - [x] target playout delay configurable
 
 **Done when:** stutters reduce under jitter.
+
+_Status: Added 8-byte UDP header (sequence + timestamp) on Android and sequence-based jitter buffer with reordering/late-drop logic on Windows; playout delay configurable via CLI._
 
 ### 6.3 Stereo support (only if necessary)
 - [ ] Detect if Android capture supports stereo

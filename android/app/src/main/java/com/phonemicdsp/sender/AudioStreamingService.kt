@@ -316,6 +316,8 @@ class AudioStreamingService : Service() {
             Log.i(TAG, "AudioRecord started: mode=${selectedAudioSourceMode.name}, source=${selectedAudioSourceMode.audioSource}, sampleRate=$SAMPLE_RATE, frameSamples=$frameSizeSamples")
             Log.i(TAG, "UDP Opus sender started: target=${destinationAddress.hostAddress}:$destinationPort")
 
+            var sequenceNumber = 0u
+
             while (captureActive.get()) {
                 val samplesRead = localAudioRecord.read(frameBuffer, 0, frameBuffer.size)
                 if (samplesRead <= 0) {
@@ -330,8 +332,10 @@ class AudioStreamingService : Service() {
 
                 clippedSamplesSinceLastTick += applyGainInPlace(frameBuffer)
                 val opusPayload = localOpusEncoder.encodeFrame(frameBuffer) ?: continue
-                val packet = DatagramPacket(opusPayload, opusPayload.size, destinationAddress, destinationPort)
+                val packetPayload = buildPacketPayload(sequenceNumber, System.currentTimeMillis().toUInt(), opusPayload)
+                val packet = DatagramPacket(packetPayload, packetPayload.size, destinationAddress, destinationPort)
                 localSocket.send(packet)
+                sequenceNumber += 1u
 
                 framesSinceLastTick++
                 val now = System.currentTimeMillis()
@@ -362,6 +366,21 @@ class AudioStreamingService : Service() {
             Log.i(TAG, "Capture loop stopped.")
             sendStatusUpdate()
         }
+    }
+
+    private fun buildPacketPayload(sequence: UInt, timestampMs: UInt, opusPayload: ByteArray): ByteArray {
+        val packet = ByteArray(PACKET_HEADER_SIZE_BYTES + opusPayload.size)
+        writeUInt32BigEndian(packet, 0, sequence)
+        writeUInt32BigEndian(packet, 4, timestampMs)
+        System.arraycopy(opusPayload, 0, packet, PACKET_HEADER_SIZE_BYTES, opusPayload.size)
+        return packet
+    }
+
+    private fun writeUInt32BigEndian(target: ByteArray, offset: Int, value: UInt) {
+        target[offset] = ((value shr 24) and 0xFFu).toByte()
+        target[offset + 1] = ((value shr 16) and 0xFFu).toByte()
+        target[offset + 2] = ((value shr 8) and 0xFFu).toByte()
+        target[offset + 3] = (value and 0xFFu).toByte()
     }
 
     private fun applyMicSelectionToActiveRecord() {
@@ -711,6 +730,7 @@ class AudioStreamingService : Service() {
         private const val DEFAULT_MIC_GAIN_PERCENT = 200
         private const val MIC_GAIN_PERCENT_SCALE = 100f
         private const val CLIPPING_WARNING_THRESHOLD_PER_SECOND = 50
+        private const val PACKET_HEADER_SIZE_BYTES = 8
         private const val THREAD_JOIN_TIMEOUT_MS = 500L
         private const val TAG = "AudioStreamingService"
 
