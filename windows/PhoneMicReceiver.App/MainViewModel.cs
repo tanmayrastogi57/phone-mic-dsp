@@ -471,7 +471,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             builder.AppendLine($"{item.TimestampDisplay} [{item.Level}] {item.Message}");
         }
 
-        Clipboard.SetText(builder.ToString());
+        System.Windows.Clipboard.SetText(builder.ToString());
         StatusMessage = "Copied filtered logs to clipboard.";
     }
 
@@ -513,7 +513,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        MessageBox.Show($"{fieldName} must be a positive integer.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show$"{fieldName} must be a positive integer.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
         result = 0;
         return false;
     }
@@ -532,7 +532,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        MessageBox.Show("Lock sender IP must be a valid IPv4 or IPv6 address.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show"Lock sender IP must be a valid IPv4 or IPv6 address.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
         result = null;
         return false;
     }
