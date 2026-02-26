@@ -313,14 +313,16 @@ _Status: Added Android stereo capability detection + toggle with mono fallback, 
 **Done when:** stereo runs end-to-end without breakage.
 
 ### 6.4 >16-bit output on Windows (format upgrades)
-- [ ] Add support guidance for:
-  - [ ] VB-CABLE Hi-Fi or VoiceMeeter
-- [ ] Allow WASAPI format negotiation:
-  - [ ] output float32 internally
-  - [ ] render to device preferred format
-- [ ] Document how to set device format in Windows
+- [x] Add support guidance for:
+  - [x] VB-CABLE Hi-Fi or VoiceMeeter
+- [x] Allow WASAPI format negotiation:
+  - [x] output float32 internally
+  - [x] render to device preferred format
+- [x] Document how to set device format in Windows
 
 **Done when:** system can output 24-bit if device supports it.
+
+_Status: Windows receiver now decodes to float32 internally, negotiates to the selected WASAPI mix format (with MediaFoundation resampler when needed), and docs now include VB-CABLE Hi-Fi / VoiceMeeter plus Windows device format setup steps._
 
 ### 6.5 Optional security
 - [ ] Add AES-GCM encryption with pre-shared key
