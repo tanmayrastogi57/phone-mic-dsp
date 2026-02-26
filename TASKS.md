@@ -182,9 +182,9 @@ _Status: Implemented Core render-device enumeration/fallback/hot-unplug handling
 **Done when:** app reopens with previous settings and can start immediately.
 
 ### 1.7.7 Tray + Startup behavior
-- [ ] Minimize-to-tray option (receiver keeps running)
-- [ ] Tray menu: Show/Hide, Start/Stop, Exit
-- [ ] “Run at startup” toggle (CurrentUser Startup or registry)
+- [x] Minimize-to-tray option (receiver keeps running)
+- [x] Tray menu: Show/Hide, Start/Stop, Exit
+- [x] “Run at startup” toggle (CurrentUser Startup or registry)
 
 **Done when:** receiver can run in background reliably.
 

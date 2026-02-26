@@ -8,6 +8,8 @@ public sealed class AppSettings
     public int BufferLengthMs { get; set; } = ReceiverConfigDefaults.BufferLengthMs;
     public string? LockSenderIp { get; set; }
     public string WindowState { get; set; } = nameof(System.Windows.WindowState.Normal);
+    public bool MinimizeToTray { get; set; }
+    public bool RunAtStartup { get; set; }
 }
 
 public static class ReceiverConfigDefaults
