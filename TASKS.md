@@ -146,11 +146,11 @@ _Status: Implemented `ReceiverEngine` API with shared config/stats/events in Cor
 _Status: Implemented Core render-device enumeration/fallback/hot-unplug handling and wired WPF dropdown refresh + persisted device selection to AppData._
 
 ### 1.7.4 Performance / CPU spike fixes (Core)
-- [ ] Eliminate per-packet allocations in the receive/decode loop:
-  - [ ] remove `pcmBytes.ToArray()` usage
-  - [ ] replace `new byte[...]` per packet with reusable buffer or `ArrayPool<byte>`
-- [ ] Keep decoded sample buffers reused (no per-frame `short[]` allocations)
-- [ ] Throttle stats publishing to a fixed cadence (e.g., 4–10 updates/sec) independent of packet rate
+- [x] Eliminate per-packet allocations in the receive/decode loop:
+  - [x] remove `pcmBytes.ToArray()` usage
+  - [x] replace `new byte[...]` per packet with reusable buffer or `ArrayPool<byte>`
+- [x] Keep decoded sample buffers reused (no per-frame `short[]` allocations)
+- [x] Throttle stats publishing to a fixed cadence (e.g., 4–10 updates/sec) independent of packet rate
 - [ ] Optional: record GC collection counts for diagnostics
 
 **Done when:** allocations per packet are ~0 (verified by profiler) and CPU spikes reduce.
