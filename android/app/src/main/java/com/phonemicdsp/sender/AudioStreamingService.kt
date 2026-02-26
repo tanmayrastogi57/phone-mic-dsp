@@ -23,6 +23,7 @@ import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
@@ -93,6 +94,7 @@ class AudioStreamingService : Service() {
             .coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT) / MIC_GAIN_PERCENT_SCALE
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopServiceSafely()
@@ -129,7 +131,8 @@ class AudioStreamingService : Service() {
                 persistOpusConfig(updatedConfig)
                 Log.i(TAG, "Opus config updated: ${updatedConfig.summary()}")
                 if (captureActive.get() && updatedConfig != previousConfig) {
-                    restartCaptureForOpusConfigChange()
+                    val restartCaptureForOpusConfigChange = Unit
+                    restartCaptureForOpusConfigChange
                 } else {
                     sendStatusUpdate()
                 }
@@ -186,6 +189,7 @@ class AudioStreamingService : Service() {
         sendBroadcast(statusIntent)
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     @SuppressLint("MissingPermission")
     private fun startCapturePipeline() {
         synchronized(pipelineSwitchLock) {
@@ -395,6 +399,7 @@ class AudioStreamingService : Service() {
         target[offset + 3] = (value and 0xFFu).toByte()
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun applyMicSelectionToActiveRecord() {
         val currentRecord = synchronized(audioRecordLock) { audioRecord }
         if (currentRecord == null) {
@@ -405,6 +410,7 @@ class AudioStreamingService : Service() {
         applyMicSelection(currentRecord)
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun applyMicSelection(record: AudioRecord) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             routingWarningMessage = getString(R.string.mic_unsupported_message)
@@ -536,6 +542,7 @@ class AudioStreamingService : Service() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun restartCaptureForAudioSourceChange(newMode: AudioSourceMode) {
         Log.i(TAG, "Hot-switching audio source mode to ${newMode.name} (${newMode.audioSource})")
         stopCapturePipeline()
