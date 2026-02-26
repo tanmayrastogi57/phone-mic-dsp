@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Windows;
 using Forms = System.Windows.Forms;
 

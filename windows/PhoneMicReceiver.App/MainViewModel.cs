@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
@@ -513,7 +514,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        System.Windows.MessageBox.Show$"{fieldName} must be a positive integer.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show(
+            $"{fieldName} must be a positive integer.",
+            "Validation",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
         result = 0;
         return false;
     }
@@ -532,7 +537,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        System.Windows.MessageBox.Show"Lock sender IP must be a valid IPv4 or IPv6 address.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show(
+            "Lock sender IP must be a valid IPv4 or IPv6 address.",
+            "Validation",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
         result = null;
         return false;
     }
