@@ -159,6 +159,138 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/micGainSeekBar" />
 
+
+        <TextView
+            android:id="@+id/opusPresetLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/opus_preset_label"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/micGainClippingWarningText" />
+
+        <Spinner
+            android:id="@+id/opusPresetSpinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusPresetLabel" />
+
+        <TextView
+            android:id="@+id/opusBitrateLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/opus_bitrate_label"
+            app:layout_constraintEnd_toStartOf="@id/opusBitrateValueText"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusPresetSpinner" />
+
+        <TextView
+            android:id="@+id/opusBitrateValueText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/opus_bitrate_default_value"
+            app:layout_constraintBaseline_toBaselineOf="@id/opusBitrateLabel"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <SeekBar
+            android:id="@+id/opusBitrateSeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:max="96"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusBitrateLabel" />
+
+        <TextView
+            android:id="@+id/opusComplexityLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/opus_complexity_label"
+            app:layout_constraintEnd_toStartOf="@id/opusComplexityValueText"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusBitrateSeekBar" />
+
+        <TextView
+            android:id="@+id/opusComplexityValueText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/opus_complexity_default_value"
+            app:layout_constraintBaseline_toBaselineOf="@id/opusComplexityLabel"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <SeekBar
+            android:id="@+id/opusComplexitySeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:max="10"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusComplexityLabel" />
+
+        <TextView
+            android:id="@+id/opusPacketLossLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/opus_packet_loss_label"
+            app:layout_constraintEnd_toStartOf="@id/opusPacketLossValueText"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusComplexitySeekBar" />
+
+        <TextView
+            android:id="@+id/opusPacketLossValueText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/opus_packet_loss_default_value"
+            app:layout_constraintBaseline_toBaselineOf="@id/opusPacketLossLabel"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <SeekBar
+            android:id="@+id/opusPacketLossSeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:max="20"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusPacketLossLabel" />
+
+        <TextView
+            android:id="@+id/opusFrameDurationLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/opus_frame_duration_label"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusPacketLossSeekBar" />
+
+        <Spinner
+            android:id="@+id/opusFrameDurationSpinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusFrameDurationLabel" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/opusFecSwitch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/opus_fec_label"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/opusFrameDurationSpinner" />
+
         <Button
             android:id="@+id/startServiceButton"
             android:layout_width="0dp"
@@ -167,7 +299,7 @@
             android:text="@string/start_streaming_action"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/micGainClippingWarningText" />
+            app:layout_constraintTop_toBottomOf="@id/opusFecSwitch" />
 
         <Button
             android:id="@+id/stopServiceButton"
