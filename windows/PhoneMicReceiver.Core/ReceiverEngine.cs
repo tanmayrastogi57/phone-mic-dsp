@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -253,7 +252,6 @@ public sealed class ReceiverEngine : IAsyncDisposable
             using (resampler)
             {
                 output.Init(playbackProvider);
-                output.Play();
 
                 Log($"Selected output device: {selectedDevice.FriendlyName}");
                 if (selectedByFallback)
@@ -263,6 +261,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 Log($"Device preferred mix format: {DescribeWaveFormat(deviceMixFormat)}");
                 Log($"Internal decode format: {DescribeWaveFormat(internalFloatFormat)}");
                 Log($"Render format path: {(resampler is null ? "direct" : "MediaFoundationResampler -> device mix format")}");
+                Log($"Codec config: opus, {ReceiverConfig.SampleRate}Hz, {config.Channels}ch, 20ms frames");
                 Log($"Startup config: bindAddress={config.BindAddress}, port={config.ListenPort}, deviceId=\"{config.DeviceId}\", deviceSubstring=\"{config.DeviceSubstring}\", outputLatencyMs={config.OutputLatencyMs}, bufferLengthMs={config.BufferLengthMs}, jitterTargetDelayMs={config.JitterTargetDelayMs}, lockSenderIp={config.LockToSenderIp}, channels={config.Channels}");
 
                 if (config.TestToneSeconds > 0)
@@ -272,7 +271,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
                     Log($"Queued {config.TestToneSeconds}s test tone at 440 Hz.");
                 }
 
-                await ReceiveUdpOpusAsync(config, enumerator, selectedDevice.ID, bufferedWaveProvider, cancellationToken);
+                await ReceiveUdpOpusAsync(config, enumerator, selectedDevice.ID, bufferedWaveProvider, output, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -292,6 +291,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
         MMDeviceEnumerator enumerator,
         string selectedDeviceId,
         BufferedWaveProvider bufferedWaveProvider,
+        WasapiOut output,
         CancellationToken cancellationToken)
     {
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -310,11 +310,11 @@ public sealed class ReceiverEngine : IAsyncDisposable
             : OpusDecoder.Create(ReceiverConfig.SampleRate, fallbackChannelCount);
         int activeStreamChannels = config.Channels;
         using var statsCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
-        const int statsIntervalMs = 250;
+        const int statsIntervalMs = 1000;
+        const double playbackPrimeThresholdMs = 40;
         bool bufferPrimed = false;
 
         const int frameSize = 960;
-        const int packetHeaderLengthBytes = 8;
         const int frameDurationMs = 20;
         var decodedSamples = new short[frameSize * 2];
         var floatSamples = new float[frameSize * config.Channels];
@@ -327,12 +327,18 @@ public sealed class ReceiverEngine : IAsyncDisposable
         long packetsThisWindow = 0;
         long packetsTotal = 0;
         long decodeErrors = 0;
+        long decodeErrorsThisWindow = 0;
         long overflows = 0;
         long underruns = 0;
         long malformedPackets = 0;
+        long malformedPacketsThisWindow = 0;
         long latePacketsDropped = 0;
         long missingPacketsSkipped = 0;
         long reorderedPackets = 0;
+        long sequenceGapEvents = 0;
+        uint lastSequenceReceived = 0;
+        bool hasLastSequence = false;
+        uint lastTimestampReceived = 0;
         IPAddress? lockedSenderIp = config.LockToSenderIp;
 
         var statsTask = Task.Run(async () =>
@@ -345,6 +351,32 @@ public sealed class ReceiverEngine : IAsyncDisposable
                     long windowPackets = Interlocked.Exchange(ref packetsThisWindow, 0);
                     long packetsPerSecond = windowPackets * 1000 / statsIntervalMs;
                     double bufferedMs = bufferedWaveProvider.BufferedDuration.TotalMilliseconds;
+                    bool shouldPlay = false;
+                    bool didRestart = false;
+
+                    lock (_playbackLock)
+                    {
+                        if (!bufferPrimed && bufferedMs >= playbackPrimeThresholdMs)
+                        {
+                            output.Play();
+                            bufferPrimed = true;
+                            shouldPlay = true;
+                        }
+                        else if (bufferedMs >= playbackPrimeThresholdMs && output.PlaybackState != PlaybackState.Playing)
+                        {
+                            output.Play();
+                            didRestart = true;
+                        }
+                    }
+
+                    if (shouldPlay)
+                    {
+                        Log($"Playback primed at {bufferedMs:F1}ms; transitioning to Playing.");
+                    }
+                    else if (didRestart)
+                    {
+                        Log($"Playback watchdog restarted output (state={output.PlaybackState}, buffered={bufferedMs:F1}ms).");
+                    }
 
                     if (bufferPrimed && bufferedMs < 10)
                     {
@@ -363,6 +395,14 @@ public sealed class ReceiverEngine : IAsyncDisposable
                         ReorderedPackets: Interlocked.Read(ref reorderedPackets),
                         LatePacketsDropped: Interlocked.Read(ref latePacketsDropped),
                         MissingPacketsSkipped: Interlocked.Read(ref missingPacketsSkipped)));
+
+                    long malformedPerSecond = Interlocked.Exchange(ref malformedPacketsThisWindow, 0);
+                    if (malformedPerSecond > 0)
+                    {
+                        Log($"[udp] dropped malformed datagrams/sec={malformedPerSecond} (length <= 8 header bytes). totalMalformed={Interlocked.Read(ref malformedPackets)}");
+                    }
+
+                    Log($"[runtime] packets/sec={packetsPerSecond}, decodeErrors/sec={Interlocked.Exchange(ref decodeErrorsThisWindow, 0)}, decodeErrorsTotal={Interlocked.Read(ref decodeErrors)}, lastSeq={(hasLastSequence ? lastSequenceReceived : 0)}, seqGapEvents={Interlocked.Read(ref sequenceGapEvents)}, lastTs={(hasLastSequence ? lastTimestampReceived : 0)}, playback={output.PlaybackState}, bufferedMs={bufferedMs:F1}");
                 }
             }
             catch (OperationCanceledException)
@@ -397,20 +437,31 @@ public sealed class ReceiverEngine : IAsyncDisposable
             Interlocked.Increment(ref packetsThisWindow);
             Interlocked.Increment(ref packetsTotal);
 
-            if (packetBuffer.Length <= packetHeaderLengthBytes)
+            if (!TryParsePacket(packetBuffer, packetBuffer.Length, out uint sequence, out uint timestampMs, out int payloadOffset, out int payloadLength))
             {
                 Interlocked.Increment(ref malformedPackets);
+                Interlocked.Increment(ref malformedPacketsThisWindow);
                 continue;
             }
 
-            uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packetBuffer.AsSpan(0, 4));
-            uint timestampMs = BinaryPrimitives.ReadUInt32BigEndian(packetBuffer.AsSpan(4, 4));
-            int payloadLength = packetBuffer.Length - packetHeaderLengthBytes;
-            byte[] pooledPayloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
-            packetBuffer.AsSpan(packetHeaderLengthBytes, payloadLength).CopyTo(pooledPayloadBuffer);
-            var opusPayload = new PooledPacket(pooledPayloadBuffer, payloadLength);
+            if (hasLastSequence)
+            {
+                uint expectedNext = lastSequenceReceived + 1;
+                if (SequenceLessThan(expectedNext, sequence))
+                {
+                    Interlocked.Increment(ref sequenceGapEvents);
+                }
+            }
 
-            var enqueueOutcome = jitterBuffer.Enqueue(sequence, timestampMs, opusPayload);
+            hasLastSequence = true;
+            lastSequenceReceived = sequence;
+            lastTimestampReceived = timestampMs;
+
+            byte[] pooledPayloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+            Buffer.BlockCopy(packetBuffer, payloadOffset, pooledPayloadBuffer, 0, payloadLength);
+            var pooledPayload = new PooledPacket(pooledPayloadBuffer, payloadLength);
+
+            var enqueueOutcome = jitterBuffer.Enqueue(sequence, timestampMs, pooledPayload);
             if (enqueueOutcome == EnqueueOutcome.Reordered)
             {
                 Interlocked.Increment(ref reorderedPackets);
@@ -489,11 +540,11 @@ public sealed class ReceiverEngine : IAsyncDisposable
                         }
 
                         bufferedWaveProvider.AddSamples(pcmFloatBytes, 0, floatBytesCount);
-                        bufferPrimed = true;
                     }
                     catch (Exception)
                     {
                         Interlocked.Increment(ref decodeErrors);
+                        Interlocked.Increment(ref decodeErrorsThisWindow);
                     }
                 }
             }
@@ -530,6 +581,33 @@ public sealed class ReceiverEngine : IAsyncDisposable
             throw new InvalidOperationException("Selected output device was disconnected. Re-select an active render device and start the receiver again.");
         }
     }
+
+    private static bool TryParsePacket(byte[] datagram, int length, out uint seq, out uint ts, out int payloadOffset, out int payloadLength)
+    {
+        seq = 0;
+        ts = 0;
+        payloadOffset = 0;
+        payloadLength = 0;
+
+        if (length <= 8)
+        {
+            return false;
+        }
+
+        seq = ((uint)datagram[0] << 24)
+            | ((uint)datagram[1] << 16)
+            | ((uint)datagram[2] << 8)
+            | datagram[3];
+        ts = ((uint)datagram[4] << 24)
+            | ((uint)datagram[5] << 16)
+            | ((uint)datagram[6] << 8)
+            | datagram[7];
+        payloadOffset = 8;
+        payloadLength = length - payloadOffset;
+        return true;
+    }
+
+    private static bool SequenceLessThan(uint left, uint right) => unchecked((int)(left - right)) < 0;
 
     private static MMDevice SelectRenderDevice(ReceiverConfig config, MMDeviceEnumerator enumerator, IReadOnlyList<MMDevice> renderDevices, out bool selectedByFallback)
     {
@@ -795,7 +873,7 @@ internal sealed class SequenceJitterBuffer : IDisposable
 
     public bool TryDequeue(out PooledPacket payload, out int skippedMissingPackets)
     {
-        payload = default!;
+        payload = null!;
         skippedMissingPackets = 0;
 
         if (!_expectedSequence.HasValue || _buffer.Count < _targetDelayPackets)
@@ -806,8 +884,9 @@ internal sealed class SequenceJitterBuffer : IDisposable
         while (true)
         {
             uint expected = _expectedSequence.Value;
-            if (_buffer.Remove(expected, out payload))
+            if (_buffer.Remove(expected, out var dequeuedPayload) && dequeuedPayload is not null)
             {
+                payload = dequeuedPayload;
                 _expectedSequence = expected + 1;
                 return true;
             }
