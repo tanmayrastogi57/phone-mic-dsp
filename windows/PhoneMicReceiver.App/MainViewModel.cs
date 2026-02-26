@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
@@ -403,7 +404,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void HandleStats(ReceiverStats stats)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             PacketsPerSecondText = stats.PacketsPerSecond.ToString();
             DecodeErrorsText = stats.DecodeErrors.ToString();
@@ -415,7 +416,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void HandleStateChanged(ReceiverState state)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state.ToString();
             RaiseCommandCanExecuteChanged();
@@ -430,7 +431,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void AddLog(LogLevel level, string message)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             var logEntry = new LogEntry(DateTimeOffset.Now, level, message);
             _logs.Add(logEntry);
@@ -471,7 +472,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             builder.AppendLine($"{item.TimestampDisplay} [{item.Level}] {item.Message}");
         }
 
-        Clipboard.SetText(builder.ToString());
+        System.Windows.Clipboard.SetText(builder.ToString());
         StatusMessage = "Copied filtered logs to clipboard.";
     }
 
@@ -513,7 +514,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        MessageBox.Show($"{fieldName} must be a positive integer.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show(
+            $"{fieldName} must be a positive integer.",
+            "Validation",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
         result = 0;
         return false;
     }
@@ -532,7 +537,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return true;
         }
 
-        MessageBox.Show("Lock sender IP must be a valid IPv4 or IPv6 address.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show(
+            "Lock sender IP must be a valid IPv4 or IPv6 address.",
+            "Validation",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
         result = null;
         return false;
     }
