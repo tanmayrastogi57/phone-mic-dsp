@@ -69,6 +69,8 @@ ipconfig
 - If the app shows **“Clipping detected — reduce gain”**, lower the slider to reduce distortion.
 - Mic gain is saved on-device and restored automatically on next launch.
 
+> Troubleshooting note: if the app opens and immediately closes on newer Android versions, check logcat for `MainActivity` / `AudioStreamingService` lines about service start restrictions (`startService` / `startForegroundService`). The app now guards those calls and logs the failing action instead of crashing the Activity when Android rejects a service start due to lifecycle/background timing.
+
 ## Audio Source Mode (Android)
 - Use **Audio Source Mode** to control how Android tunes capture gain/routing:
   - **VOICE_COMMUNICATION** (default): best DSP for near-mouth speech (AEC/NS/AGC best-effort)

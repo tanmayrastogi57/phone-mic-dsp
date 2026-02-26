@@ -98,6 +98,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Log.i(TAG, "MainActivity.onCreate: initializing UI")
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
@@ -193,7 +194,10 @@ class MainActivity : AppCompatActivity() {
                 activeMicText.text = getString(R.string.active_mic_format, selectedOption.displayName)
                 refreshStereoSupportUi()
 
-                startService(AudioStreamingService.selectMicIntent(this@MainActivity, selectedOption.deviceId, selectedOption.direction))
+                startServiceSafely(
+                    AudioStreamingService.selectMicIntent(this@MainActivity, selectedOption.deviceId, selectedOption.direction),
+                    "selectMic"
+                )
             }
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -207,7 +211,10 @@ class MainActivity : AppCompatActivity() {
 
                 val selectedMode = audioSourceOptions[position]
                 sharedPreferences.edit().putString(PREF_KEY_AUDIO_SOURCE_MODE, selectedMode.name).apply()
-                startService(AudioStreamingService.selectAudioSourceIntent(this@MainActivity, selectedMode))
+                startServiceSafely(
+                    AudioStreamingService.selectAudioSourceIntent(this@MainActivity, selectedMode),
+                    "selectAudioSource"
+                )
             }
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -294,7 +301,7 @@ class MainActivity : AppCompatActivity() {
                 val gain = gainPercent / MIC_GAIN_PERCENT_SCALE
                 micGainValueText.text = getString(R.string.mic_gain_value_format, gain)
                 sharedPreferences.edit().putInt(PREF_KEY_MIC_GAIN_PERCENT, gainPercent).apply()
-                startService(AudioStreamingService.setGainIntent(this@MainActivity, gain))
+                startServiceSafely(AudioStreamingService.setGainIntent(this@MainActivity, gain), "setGain")
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
@@ -302,7 +309,7 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
 
-        startService(AudioStreamingService.setGainIntent(this, restoredMicGain))
+        startServiceSafely(AudioStreamingService.setGainIntent(this, restoredMicGain), "restoreGain")
         pushCurrentOpusConfigToService(sharedPreferences)
 
         updateStatusViews(
@@ -348,14 +355,14 @@ class MainActivity : AppCompatActivity() {
 
             val startIntent = AudioStreamingService.startIntent(this, destinationIp, destinationPort)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(startIntent)
+                startForegroundServiceSafely(startIntent, "startStreaming")
             } else {
-                startService(startIntent)
+                startServiceSafely(startIntent, "startStreamingLegacy")
             }
         }
 
         stopButton.setOnClickListener {
-            startService(AudioStreamingService.stopIntent(this))
+            startServiceSafely(AudioStreamingService.stopIntent(this), "stopStreaming")
         }
     }
 
@@ -482,7 +489,7 @@ class MainActivity : AppCompatActivity() {
             .putInt(PREF_KEY_OPUS_CHANNEL_COUNT, config.channelCount)
             .apply()
 
-        startService(AudioStreamingService.setOpusConfigIntent(this, config))
+        startServiceSafely(AudioStreamingService.setOpusConfigIntent(this, config), "setOpusConfig")
     }
 
 
@@ -507,18 +514,39 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        Log.i(TAG, "MainActivity.onStart: registering status receiver")
         ContextCompat.registerReceiver(
             this,
             statusReceiver,
             IntentFilter(AudioStreamingService.ACTION_STATUS_UPDATE),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        startService(AudioStreamingService.statusQueryIntent(this))
+        startServiceSafely(AudioStreamingService.statusQueryIntent(this), "queryStatus")
     }
 
     override fun onStop() {
         unregisterReceiver(statusReceiver)
         super.onStop()
+    }
+
+    private fun startServiceSafely(intent: Intent, reason: String): Boolean {
+        return try {
+            startService(intent)
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "startService failed for $reason (action=${intent.action})", exception)
+            false
+        }
+    }
+
+    private fun startForegroundServiceSafely(intent: Intent, reason: String): Boolean {
+        return try {
+            startForegroundService(intent)
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "startForegroundService failed for $reason (action=${intent.action})", exception)
+            false
+        }
     }
 
     private fun refreshMicrophoneList(preferredDeviceId: Int?) {
