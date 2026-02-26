@@ -68,6 +68,7 @@ class AudioStreamingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i(TAG, "AudioStreamingService.onCreate: initializing service state")
         ensureNotificationChannel()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         currentDspSummary = getString(R.string.dsp_status_placeholder)
@@ -96,7 +97,10 @@ class AudioStreamingService : Service() {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        val action = intent?.action
+        Log.i(TAG, "onStartCommand action=$action startId=$startId")
+        return try {
+            when (action) {
             ACTION_STOP -> stopServiceSafely()
             ACTION_QUERY_STATUS -> sendStatusUpdate()
             ACTION_SELECT_MIC -> {
@@ -154,12 +158,21 @@ class AudioStreamingService : Service() {
             null -> {
                 destinationIp = intent?.getStringExtra(EXTRA_DESTINATION_IP).orEmpty()
                 destinationPort = intent?.getIntExtra(EXTRA_DESTINATION_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
+                Log.i(TAG, "Starting foreground capture for $destinationIp:$destinationPort")
                 startForeground(NOTIFICATION_ID, buildStreamingNotification())
                 startCapturePipeline()
             }
         }
 
-        return START_STICKY
+            START_STICKY
+        } catch (exception: Exception) {
+            Log.e(TAG, "Unhandled exception in onStartCommand action=$action", exception)
+            lastErrorMessage = getString(R.string.error_capture_loop_failure)
+            isStreaming = false
+            sendStatusUpdate()
+            stopServiceSafely()
+            START_NOT_STICKY
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -604,6 +617,7 @@ class AudioStreamingService : Service() {
 
     private fun ensureNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.d(TAG, "Notification channel not required on API ${Build.VERSION.SDK_INT}")
             return
         }
 
@@ -618,6 +632,7 @@ class AudioStreamingService : Service() {
         }
 
         manager.createNotificationChannel(channel)
+        Log.i(TAG, "Notification channel ensured: $CHANNEL_ID")
     }
 
     private fun buildStreamingNotification(): Notification {
