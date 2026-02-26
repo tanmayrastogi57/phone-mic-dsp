@@ -93,8 +93,8 @@ Split Windows side into 3 projects:
 - 16-bit PCM
 - 20ms frames
 - Default output device substring: "CABLE Input"
-- One UDP packet = One Opus frame
-- No protocol changes
+- One UDP packet = One Opus frame with 8-byte header (uint32 sequence + uint32 timestamp)
+- Jitter buffer reorders packets and drops late arrivals
 
 ---
 

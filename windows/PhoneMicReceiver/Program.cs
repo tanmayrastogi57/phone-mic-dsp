@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using System.Diagnostics;
+using System.Buffers.Binary;
 using Concentus.Structs;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -17,6 +18,7 @@ string deviceSubstring = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1])
 int outputLatencyMs = ParsePositiveIntArg(args, 2, 50, "outputLatencyMs");
 int bufferLengthMs = ParsePositiveIntArg(args, 3, 500, "bufferLengthMs");
 int testToneSeconds = ParseNonNegativeIntArg(args, 4, 0, "testToneSeconds");
+int jitterTargetDelayMs = ParseNonNegativeIntArg(args, 5, 60, "jitterTargetDelayMs");
 
 using var enumerator = new MMDeviceEnumerator();
 var renderDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
@@ -57,7 +59,7 @@ output.Init(bufferedWaveProvider);
 output.Play();
 
 Console.WriteLine($"Selected output device: {selectedDevice.FriendlyName}");
-Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}");
+Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}, jitterTargetDelayMs={jitterTargetDelayMs}");
 Console.WriteLine("WASAPI output is running.");
 Console.WriteLine("Receiver is in Opus UDP mode. Press Ctrl+C to stop.");
 
@@ -78,7 +80,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     shutdown.Set();
 };
 
-var receiverTask = ReceiveUdpOpusAsync(listenPort, cancellationTokenSource.Token);
+var receiverTask = ReceiveUdpOpusAsync(listenPort, jitterTargetDelayMs, cancellationTokenSource.Token);
 
 shutdown.Wait();
 
@@ -95,7 +97,7 @@ void WritePcmToBuffer(ReadOnlySpan<byte> pcmBytes)
     bufferedWaveProvider.AddSamples(pcmBytes.ToArray(), 0, pcmBytes.Length);
 }
 
-async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
+async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, CancellationToken cancellationToken)
 {
     using var udpClient = new UdpClient(port);
     var opusDecoder = OpusDecoder.Create(sampleRate, channels);
@@ -104,13 +106,21 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
     long decodeErrors = 0;
     long overflows = 0;
     long underruns = 0;
+    long malformedPackets = 0;
+    long latePacketsDropped = 0;
+    long missingPacketsSkipped = 0;
+    long reorderedPackets = 0;
     var statsWindow = Stopwatch.StartNew();
     bool bufferPrimed = false;
 
     const int frameSize = 960;
+    const int packetHeaderLengthBytes = 8;
+    const int frameDurationMs = 20;
     var decodedSamples = new short[frameSize * channels];
+    int jitterTargetPackets = Math.Max(1, (int)Math.Ceiling(jitterDelayMs / (double)frameDurationMs));
+    var jitterBuffer = new SequenceJitterBuffer(jitterTargetPackets, maxBufferedPackets: 200);
 
-    Console.WriteLine($"Listening for UDP Opus packets on 0.0.0.0:{port}...");
+    Console.WriteLine($"Listening for UDP Opus packets on 0.0.0.0:{port} with jitter target={jitterTargetPackets} packets...");
 
     while (!cancellationToken.IsCancellationRequested)
     {
@@ -130,41 +140,67 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
             continue;
         }
 
-        if (packet.Buffer.Length == 0)
+        if (packet.Buffer.Length <= packetHeaderLengthBytes)
         {
+            malformedPackets++;
             continue;
         }
 
         packetsThisWindow++;
         packetsTotal++;
 
-        try
-        {
-            int decodedSamplesPerChannel = opusDecoder.Decode(packet.Buffer, 0, packet.Buffer.Length, decodedSamples, 0, frameSize, false);
-            int totalSamples = decodedSamplesPerChannel * channels;
+        var packetSpan = packet.Buffer.AsSpan();
+        uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packetSpan[..4]);
+        uint timestampMs = BinaryPrimitives.ReadUInt32BigEndian(packetSpan.Slice(4, 4));
+        var opusPayload = packetSpan[packetHeaderLengthBytes..].ToArray();
 
-            if (totalSamples <= 0)
+        var enqueueOutcome = jitterBuffer.Enqueue(sequence, timestampMs, opusPayload);
+        if (enqueueOutcome == EnqueueOutcome.LateDropped)
+        {
+            latePacketsDropped++;
+            continue;
+        }
+
+        if (enqueueOutcome == EnqueueOutcome.Reordered)
+        {
+            reorderedPackets++;
+        }
+
+        while (jitterBuffer.TryDequeue(out var orderedPayload, out int skippedPackets))
+        {
+            if (skippedPackets > 0)
+            {
+                missingPacketsSkipped += skippedPackets;
+            }
+
+            try
+            {
+                int decodedSamplesPerChannel = opusDecoder.Decode(orderedPayload, 0, orderedPayload.Length, decodedSamples, 0, frameSize, false);
+                int totalSamples = decodedSamplesPerChannel * channels;
+
+                if (totalSamples <= 0)
+                {
+                    decodeErrors++;
+                    continue;
+                }
+
+                var pcmBytes = new byte[totalSamples * sizeof(short)];
+                Buffer.BlockCopy(decodedSamples, 0, pcmBytes, 0, pcmBytes.Length);
+
+                if (bufferedWaveProvider.BufferedBytes + pcmBytes.Length > bufferedWaveProvider.BufferLength)
+                {
+                    overflows++;
+                    Console.WriteLine($"[buffer] overflow predicted; dropping oldest samples (event #{overflows}).");
+                }
+
+                WritePcmToBuffer(pcmBytes);
+                bufferPrimed = true;
+            }
+            catch (Exception)
             {
                 decodeErrors++;
                 continue;
             }
-
-            var pcmBytes = new byte[totalSamples * sizeof(short)];
-            Buffer.BlockCopy(decodedSamples, 0, pcmBytes, 0, pcmBytes.Length);
-
-            if (bufferedWaveProvider.BufferedBytes + pcmBytes.Length > bufferedWaveProvider.BufferLength)
-            {
-                overflows++;
-                Console.WriteLine($"[buffer] overflow predicted; dropping oldest samples (event #{overflows}).");
-            }
-
-            WritePcmToBuffer(pcmBytes);
-            bufferPrimed = true;
-        }
-        catch (Exception)
-        {
-            decodeErrors++;
-            continue;
         }
 
         if (statsWindow.ElapsedMilliseconds >= 1_000)
@@ -176,13 +212,101 @@ async Task ReceiveUdpOpusAsync(int port, CancellationToken cancellationToken)
                 Console.WriteLine($"[buffer] underrun risk; buffered={bufferedMs:F1}ms (event #{underruns}).");
             }
 
-            Console.WriteLine($"[stats] packets/sec={packetsThisWindow}, decodeErrors={decodeErrors}, bufferedMs={bufferedMs:F1}, overflows={overflows}, underruns={underruns}");
+            Console.WriteLine($"[stats] packets/sec={packetsThisWindow}, decodeErrors={decodeErrors}, malformed={malformedPackets}, reordered={reorderedPackets}, lateDrops={latePacketsDropped}, missingSkips={missingPacketsSkipped}, jitterBuffered={jitterBuffer.BufferedPackets}, bufferedMs={bufferedMs:F1}, overflows={overflows}, underruns={underruns}");
             packetsThisWindow = 0;
             statsWindow.Restart();
         }
     }
 
-    Console.WriteLine($"Receiver stopped. packetsTotal={packetsTotal}, decodeErrors={decodeErrors}, overflows={overflows}, underruns={underruns}");
+    Console.WriteLine($"Receiver stopped. packetsTotal={packetsTotal}, decodeErrors={decodeErrors}, malformed={malformedPackets}, reordered={reorderedPackets}, lateDrops={latePacketsDropped}, missingSkips={missingPacketsSkipped}, overflows={overflows}, underruns={underruns}");
+}
+
+enum EnqueueOutcome
+{
+    Accepted,
+    Reordered,
+    LateDropped
+}
+
+sealed class SequenceJitterBuffer
+{
+    private readonly SortedDictionary<uint, byte[]> _buffer = new();
+    private readonly int _targetDelayPackets;
+    private readonly int _maxBufferedPackets;
+    private uint? _expectedSequence;
+    private uint? _lastEnqueuedSequence;
+
+    public SequenceJitterBuffer(int targetDelayPackets, int maxBufferedPackets)
+    {
+        _targetDelayPackets = Math.Max(1, targetDelayPackets);
+        _maxBufferedPackets = Math.Max(_targetDelayPackets + 1, maxBufferedPackets);
+    }
+
+    public int BufferedPackets => _buffer.Count;
+
+    public EnqueueOutcome Enqueue(uint sequence, uint _timestampMs, byte[] payload)
+    {
+        _expectedSequence ??= sequence;
+
+        if (_expectedSequence.HasValue && SequenceLessThan(sequence, _expectedSequence.Value))
+        {
+            return EnqueueOutcome.LateDropped;
+        }
+
+        bool reordered = _lastEnqueuedSequence.HasValue && SequenceLessThan(sequence, _lastEnqueuedSequence.Value);
+        _lastEnqueuedSequence = sequence;
+        _buffer[sequence] = payload;
+
+        while (_buffer.Count > _maxBufferedPackets)
+        {
+            uint oldest = _buffer.Keys.First();
+            _buffer.Remove(oldest);
+            if (_expectedSequence.HasValue && oldest == _expectedSequence.Value)
+            {
+                _expectedSequence = oldest + 1;
+            }
+        }
+
+        return reordered ? EnqueueOutcome.Reordered : EnqueueOutcome.Accepted;
+    }
+
+    public bool TryDequeue(out byte[] payload, out int skippedMissingPackets)
+    {
+        payload = Array.Empty<byte>();
+        skippedMissingPackets = 0;
+
+        if (!_expectedSequence.HasValue || _buffer.Count < _targetDelayPackets)
+        {
+            return false;
+        }
+
+        while (true)
+        {
+            uint expected = _expectedSequence.Value;
+            if (_buffer.Remove(expected, out payload))
+            {
+                _expectedSequence = expected + 1;
+                return true;
+            }
+
+            uint earliestAvailable = _buffer.Keys.First();
+            if (!SequenceLessThan(expected, earliestAvailable))
+            {
+                _expectedSequence = expected + 1;
+                continue;
+            }
+
+            skippedMissingPackets++;
+            _expectedSequence = expected + 1;
+
+            if (_buffer.Count < _targetDelayPackets)
+            {
+                return false;
+            }
+        }
+    }
+
+    private static bool SequenceLessThan(uint left, uint right) => unchecked((int)(left - right)) < 0;
 }
 
 static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSampleRate)
