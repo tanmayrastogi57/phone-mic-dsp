@@ -174,10 +174,10 @@ _Status: Implemented Core render-device enumeration/fallback/hot-unplug handling
 **Done when:** user can run the receiver end-to-end without opening a terminal.
 
 ### 1.7.6 Settings persistence
-- [ ] Save/load settings:
-  - [ ] `%AppData%\phone-mic-dsp\settings.json`
-- [ ] Persist: last port, selected device, latency/buffer, lockSenderIp, window state
-- [ ] Add “Reset to defaults” button
+- [x] Save/load settings:
+  - [x] `%AppData%\phone-mic-dsp\settings.json`
+- [x] Persist: last port, selected device, latency/buffer, lockSenderIp, window state
+- [x] Add “Reset to defaults” button
 
 **Done when:** app reopens with previous settings and can start immediately.
 

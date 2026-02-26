@@ -40,6 +40,9 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="120" />
                     <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="16" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -59,7 +62,10 @@
                 <TextBlock Grid.Column="10" VerticalAlignment="Center" Margin="0,0,6,0" Text="Buffer ms" />
                 <TextBox Grid.Column="11" Text="{Binding BufferLengthMsText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
 
-                <StackPanel Grid.Column="13" Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Grid.Column="13" VerticalAlignment="Center" Margin="0,0,6,0" Text="Lock sender IP" />
+                <TextBox Grid.Column="14" Text="{Binding LockSenderIpText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
+
+                <StackPanel Grid.Column="16" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Margin="0,0,8,0" Padding="16,5" Content="Start" Command="{Binding StartCommand}" />
                     <Button Margin="0,0,8,0" Padding="16,5" Content="Stop" Command="{Binding StopCommand}" />
                     <Button Padding="16,5" Content="Test tone" Command="{Binding TestToneCommand}" />
@@ -73,6 +79,7 @@
                 <Button Margin="0,0,8,0" Padding="14,4" Content="Low-latency" Command="{Binding ApplyLowLatencyPresetCommand}" />
                 <Button Margin="0,0,8,0" Padding="14,4" Content="Balanced" Command="{Binding ApplyBalancedPresetCommand}" />
                 <Button Margin="0,0,8,0" Padding="14,4" Content="Stable" Command="{Binding ApplyStablePresetCommand}" />
+                <Button Margin="0,0,8,0" Padding="14,4" Content="Reset defaults" Command="{Binding ResetSettingsCommand}" />
                 <TextBlock VerticalAlignment="Center" Text="{Binding PresetSummary}" Foreground="#666" />
             </StackPanel>
         </Border>
