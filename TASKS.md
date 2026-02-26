@@ -112,24 +112,26 @@ This file lists all tasks from project start to completion (MVP → quality upgr
 **Done when:** `dotnet build` succeeds and CLI can still receive Opus and play to VB-CABLE.
 
 ### 1.7.2 Define Core public API (ReceiverEngine)
-- [ ] Add `ReceiverConfig`:
-  - [ ] listen port (default 5555)
-  - [ ] bind address (default 0.0.0.0)
-  - [ ] device selection (id or substring, default "CABLE Input")
-  - [ ] outputLatencyMs (default 50)
-  - [ ] bufferLengthMs (default 500)
-  - [ ] optional: lock to sender IP (ignore other sources)
-- [ ] Add `ReceiverStats`:
-  - [ ] packets/sec + packetsTotal
-  - [ ] decodeErrors
-  - [ ] bufferedMs
-  - [ ] overflows + underruns
-- [ ] Implement `ReceiverEngine`:
-  - [ ] `StartAsync(ReceiverConfig)`
-  - [ ] `StopAsync()`
-  - [ ] events/callbacks: `OnStats`, `OnLog`, `OnStateChanged`
+- [x] Add `ReceiverConfig`:
+  - [x] listen port (default 5555)
+  - [x] bind address (default 0.0.0.0)
+  - [x] device selection (id or substring, default "CABLE Input")
+  - [x] outputLatencyMs (default 50)
+  - [x] bufferLengthMs (default 500)
+  - [x] optional: lock to sender IP (ignore other sources)
+- [x] Add `ReceiverStats`:
+  - [x] packets/sec + packetsTotal
+  - [x] decodeErrors
+  - [x] bufferedMs
+  - [x] overflows + underruns
+- [x] Implement `ReceiverEngine`:
+  - [x] `StartAsync(ReceiverConfig)`
+  - [x] `StopAsync()`
+  - [x] events/callbacks: `OnStats`, `OnLog`, `OnStateChanged`
 
 **Done when:** UI and CLI can control the receiver with the same API.
+
+_Status: Implemented `ReceiverEngine` API with shared config/stats/events in Core and switched CLI control flow to `StartAsync`/`StopAsync`; WPF wiring remains scaffolded for later UI tasks._
 
 ### 1.7.3 Audio device enumeration + selection (Core)
 - [ ] Expose render device list (id + friendly name)
