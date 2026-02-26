@@ -21,8 +21,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly object _logFileLock = new();
 
     private string _listenPortText = ReceiverConfig.DefaultPort.ToString();
-    private string _outputLatencyMsText = "50";
-    private string _bufferLengthMsText = "500";
+    private string _outputLatencyMsText = ReceiverConfigDefaults.OutputLatencyMs.ToString();
+    private string _bufferLengthMsText = ReceiverConfigDefaults.BufferLengthMs.ToString();
+    private string _lockSenderIpText = string.Empty;
     private string _statusMessage = "Ready.";
     private string _stateText = ReceiverState.Stopped.ToString();
     private string _presetSummary = "Balanced (latency 50ms, buffer 500ms).";
@@ -32,6 +33,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _bufferedMsText = "0.0";
     private string _overflowsText = "0";
     private string _underrunsText = "0";
+    private string _windowStateText = nameof(WindowState.Normal);
 
     private RenderDeviceInfo? _selectedDevice;
 
@@ -56,12 +58,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         ApplyStablePresetCommand = new RelayCommand(() => ApplyPreset(80, 900, "Stable"));
         CopyLogsCommand = new RelayCommand(CopyLogsToClipboard, () => _logs.Count > 0);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        ResetSettingsCommand = new RelayCommand(ResetSettingsToDefaults);
 
         _engine.OnStats += HandleStats;
         _engine.OnStateChanged += HandleStateChanged;
         _engine.OnLog += HandleLog;
 
         RefreshDevices();
+        LoadSettings();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -96,6 +100,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ICommand OpenLogFolderCommand { get; }
 
+    public ICommand ResetSettingsCommand { get; }
+
     public string ListenPortText
     {
         get => _listenPortText;
@@ -112,6 +118,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _bufferLengthMsText;
         set => SetProperty(ref _bufferLengthMsText, value);
+    }
+
+    public string LockSenderIpText
+    {
+        get => _lockSenderIpText;
+        set => SetProperty(ref _lockSenderIpText, value);
+    }
+
+    public string WindowStateText
+    {
+        get => _windowStateText;
+        private set => SetProperty(ref _windowStateText, value);
     }
 
     public RenderDeviceInfo? SelectedDevice
@@ -182,6 +200,68 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
+    public WindowState GetInitialWindowState()
+    {
+        return Enum.TryParse(WindowStateText, out WindowState state) ? state : WindowState.Normal;
+    }
+
+    public void OnWindowStateChanged(WindowState state)
+    {
+        WindowStateText = state.ToString();
+    }
+
+    public void SaveSettings()
+    {
+        var settings = new AppSettings
+        {
+            ListenPort = ParseOrDefault(ListenPortText, ReceiverConfigDefaults.ListenPort),
+            SelectedDeviceId = SelectedDevice?.Id,
+            OutputLatencyMs = ParseOrDefault(OutputLatencyMsText, ReceiverConfigDefaults.OutputLatencyMs),
+            BufferLengthMs = ParseOrDefault(BufferLengthMsText, ReceiverConfigDefaults.BufferLengthMs),
+            LockSenderIp = string.IsNullOrWhiteSpace(LockSenderIpText) ? null : LockSenderIpText.Trim(),
+            WindowState = WindowStateText
+        };
+
+        SettingsStore.Save(settings);
+    }
+
+    private void LoadSettings()
+    {
+        var settings = SettingsStore.LoadOrDefault();
+        ListenPortText = settings.ListenPort.ToString();
+        OutputLatencyMsText = settings.OutputLatencyMs.ToString();
+        BufferLengthMsText = settings.BufferLengthMs.ToString();
+        LockSenderIpText = settings.LockSenderIp ?? string.Empty;
+        WindowStateText = settings.WindowState;
+
+        if (!string.IsNullOrWhiteSpace(settings.SelectedDeviceId))
+        {
+            var selected = Devices.FirstOrDefault(d => string.Equals(d.Id, settings.SelectedDeviceId, StringComparison.OrdinalIgnoreCase));
+            if (selected is not null)
+            {
+                SelectedDevice = selected;
+            }
+        }
+
+        StatusMessage = $"Loaded settings from {SettingsStore.SettingsPath}.";
+    }
+
+    private void ResetSettingsToDefaults()
+    {
+        ListenPortText = ReceiverConfigDefaults.ListenPort.ToString();
+        OutputLatencyMsText = ReceiverConfigDefaults.OutputLatencyMs.ToString();
+        BufferLengthMsText = ReceiverConfigDefaults.BufferLengthMs.ToString();
+        LockSenderIpText = string.Empty;
+        WindowStateText = nameof(WindowState.Normal);
+
+        SelectedDevice = Devices.FirstOrDefault(d => d.MatchesPreferredSubstring)
+            ?? Devices.FirstOrDefault(d => d.IsDefault)
+            ?? Devices.FirstOrDefault();
+
+        SaveSettings();
+        StatusMessage = "Settings reset to defaults.";
+    }
+
     private async Task StartAsync()
     {
         if (!TryParsePositiveInt(ListenPortText, "Listen port", out int listenPort)
@@ -191,17 +271,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        if (!TryParseOptionalIp(LockSenderIpText, out var lockSenderIp))
+        {
+            return;
+        }
+
         var config = new ReceiverConfig
         {
             ListenPort = listenPort,
             DeviceId = SelectedDevice?.Id,
             OutputLatencyMs = outputLatency,
-            BufferLengthMs = bufferLength
+            BufferLengthMs = bufferLength,
+            LockToSenderIp = lockSenderIp
         };
 
         try
         {
             await _engine.StartAsync(config);
+            SaveSettings();
             StatusMessage = $"Receiver started on UDP port {listenPort}.";
         }
         catch (Exception ex)
@@ -216,6 +303,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         try
         {
             await _engine.StopAsync();
+            SaveSettings();
             StatusMessage = "Receiver stopped.";
         }
         catch (Exception ex)
@@ -241,6 +329,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void RefreshDevices()
     {
+        var previousDeviceId = SelectedDevice?.Id;
         var devices = ReceiverEngine.GetRenderDevices();
         Devices.Clear();
         foreach (var device in devices)
@@ -248,7 +337,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             Devices.Add(device);
         }
 
-        SelectedDevice = devices.FirstOrDefault(d => d.MatchesPreferredSubstring)
+        SelectedDevice = devices.FirstOrDefault(d => d.Id == previousDeviceId)
+            ?? devices.FirstOrDefault(d => d.MatchesPreferredSubstring)
             ?? devices.FirstOrDefault(d => d.IsDefault)
             ?? devices.FirstOrDefault();
 
@@ -372,6 +462,30 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         MessageBox.Show($"{fieldName} must be a positive integer.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
         result = 0;
         return false;
+    }
+
+    private static bool TryParseOptionalIp(string value, out IPAddress? result)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            result = null;
+            return true;
+        }
+
+        if (IPAddress.TryParse(value.Trim(), out var parsed))
+        {
+            result = parsed;
+            return true;
+        }
+
+        MessageBox.Show("Lock sender IP must be a valid IPv4 or IPv6 address.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+        result = null;
+        return false;
+    }
+
+    private static int ParseOrDefault(string value, int fallback)
+    {
+        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 
     private static LogLevel InferLevel(string message)
