@@ -9,7 +9,6 @@ const string defaultDeviceSubstring = "CABLE Input";
 const int defaultPort = 5555;
 const int sampleRate = 48_000;
 const int defaultChannels = 1;
-const int bitsPerSample = 16;
 
 int listenPort = ParsePositiveIntArg(args, 0, defaultPort, "port");
 string deviceSubstring = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1])
@@ -54,54 +53,73 @@ if (channels == 2 && selectedDevice.AudioClient.MixFormat.Channels < 2)
     Environment.Exit(1);
 }
 
-var waveFormat = new WaveFormat(sampleRate, bitsPerSample, channels);
-var bufferedWaveProvider = new BufferedWaveProvider(waveFormat)
+var internalFloatFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, channels);
+var bufferedWaveProvider = new BufferedWaveProvider(internalFloatFormat)
 {
     BufferDuration = TimeSpan.FromMilliseconds(bufferLengthMs),
     DiscardOnBufferOverflow = true
 };
 
+IWaveProvider playbackProvider = bufferedWaveProvider;
+MediaFoundationResampler? resampler = null;
+WaveFormat deviceMixFormat = selectedDevice.AudioClient.MixFormat;
+
+if (!WaveFormatEquals(bufferedWaveProvider.WaveFormat, deviceMixFormat))
+{
+    resampler = new MediaFoundationResampler(bufferedWaveProvider, deviceMixFormat)
+    {
+        ResamplerQuality = 60
+    };
+    playbackProvider = resampler;
+}
+
 using var output = new WasapiOut(selectedDevice, AudioClientShareMode.Shared, true, outputLatencyMs);
-output.Init(bufferedWaveProvider);
-output.Play();
+using (resampler)
+{
+    output.Init(playbackProvider);
+    output.Play();
 
 Console.WriteLine($"Selected output device: {selectedDevice.FriendlyName}");
+Console.WriteLine($"Device preferred mix format: {DescribeWaveFormat(deviceMixFormat)}");
+Console.WriteLine($"Internal decode format: {DescribeWaveFormat(internalFloatFormat)}");
+Console.WriteLine($"Render format path: {(resampler is null ? "direct" : "MediaFoundationResampler -> device mix format")}");
 Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}, jitterTargetDelayMs={jitterTargetDelayMs}, channels={channels}");
 Console.WriteLine("WASAPI output is running.");
 Console.WriteLine("Receiver is in Opus UDP mode. Press Ctrl+C to stop.");
 
-if (testToneSeconds > 0)
-{
-    var toneBytes = GenerateSinePcm(440, testToneSeconds, sampleRate);
-    WritePcmToBuffer(toneBytes);
-    Console.WriteLine($"Queued {testToneSeconds}s test tone at 440 Hz.");
+    if (testToneSeconds > 0)
+    {
+        var toneBytes = GenerateSineFloat(440, testToneSeconds, sampleRate, channels);
+        WritePcmToBuffer(toneBytes, toneBytes.Length);
+        Console.WriteLine($"Queued {testToneSeconds}s test tone at 440 Hz.");
+    }
+
+    var shutdown = new ManualResetEventSlim(false);
+    using var cancellationTokenSource = new CancellationTokenSource();
+
+    Console.CancelKeyPress += (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        cancellationTokenSource.Cancel();
+        shutdown.Set();
+    };
+
+    var receiverTask = ReceiveUdpOpusAsync(listenPort, jitterTargetDelayMs, channels, cancellationTokenSource.Token);
+
+    shutdown.Wait();
+
+    try
+    {
+        await receiverTask;
+    }
+    catch (OperationCanceledException)
+    {
+    }
 }
 
-var shutdown = new ManualResetEventSlim(false);
-using var cancellationTokenSource = new CancellationTokenSource();
-
-Console.CancelKeyPress += (_, eventArgs) =>
+void WritePcmToBuffer(byte[] pcmBytes, int bytesCount)
 {
-    eventArgs.Cancel = true;
-    cancellationTokenSource.Cancel();
-    shutdown.Set();
-};
-
-var receiverTask = ReceiveUdpOpusAsync(listenPort, jitterTargetDelayMs, channels, cancellationTokenSource.Token);
-
-shutdown.Wait();
-
-try
-{
-    await receiverTask;
-}
-catch (OperationCanceledException)
-{
-}
-
-void WritePcmToBuffer(ReadOnlySpan<byte> pcmBytes)
-{
-    bufferedWaveProvider.AddSamples(pcmBytes.ToArray(), 0, pcmBytes.Length);
+    bufferedWaveProvider.AddSamples(pcmBytes, 0, bytesCount);
 }
 
 async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, int decodeChannels, CancellationToken cancellationToken)
@@ -124,6 +142,8 @@ async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, int decodeChannels, 
     const int packetHeaderLengthBytes = 8;
     const int frameDurationMs = 20;
     var decodedSamples = new short[frameSize * decodeChannels];
+    var floatSamples = new float[frameSize * decodeChannels];
+    var pcmFloatBytes = new byte[frameSize * decodeChannels * sizeof(float)];
     int jitterTargetPackets = Math.Max(1, (int)Math.Ceiling(jitterDelayMs / (double)frameDurationMs));
     var jitterBuffer = new SequenceJitterBuffer(jitterTargetPackets, maxBufferedPackets: 200);
 
@@ -191,16 +211,21 @@ async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, int decodeChannels, 
                     continue;
                 }
 
-                var pcmBytes = new byte[totalSamples * sizeof(short)];
-                Buffer.BlockCopy(decodedSamples, 0, pcmBytes, 0, pcmBytes.Length);
+                for (int i = 0; i < totalSamples; i++)
+                {
+                    floatSamples[i] = decodedSamples[i] / 32768f;
+                }
 
-                if (bufferedWaveProvider.BufferedBytes + pcmBytes.Length > bufferedWaveProvider.BufferLength)
+                int floatBytesCount = totalSamples * sizeof(float);
+                Buffer.BlockCopy(floatSamples, 0, pcmFloatBytes, 0, floatBytesCount);
+
+                if (bufferedWaveProvider.BufferedBytes + floatBytesCount > bufferedWaveProvider.BufferLength)
                 {
                     overflows++;
                     Console.WriteLine($"[buffer] overflow predicted; dropping oldest samples (event #{overflows}).");
                 }
 
-                WritePcmToBuffer(pcmBytes);
+                WritePcmToBuffer(pcmFloatBytes, floatBytesCount);
                 bufferPrimed = true;
             }
             catch (Exception)
@@ -316,17 +341,22 @@ sealed class SequenceJitterBuffer
     private static bool SequenceLessThan(uint left, uint right) => unchecked((int)(left - right)) < 0;
 }
 
-static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSampleRate)
+static byte[] GenerateSineFloat(int frequencyHz, int durationSeconds, int waveSampleRate, int waveChannels)
 {
     int sampleCount = waveSampleRate * durationSeconds;
-    var pcmBytes = new byte[sampleCount * 2];
+    var pcmBytes = new byte[sampleCount * waveChannels * sizeof(float)];
+    var frame = new float[waveChannels];
 
     for (int i = 0; i < sampleCount; i++)
     {
         double sample = Math.Sin(2 * Math.PI * frequencyHz * i / waveSampleRate);
-        short pcmSample = (short)(sample * short.MaxValue * 0.2);
-        pcmBytes[i * 2] = (byte)(pcmSample & 0xFF);
-        pcmBytes[i * 2 + 1] = (byte)((pcmSample >> 8) & 0xFF);
+        float pcmSample = (float)(sample * 0.2);
+        for (int ch = 0; ch < waveChannels; ch++)
+        {
+            frame[ch] = pcmSample;
+        }
+
+        Buffer.BlockCopy(frame, 0, pcmBytes, i * waveChannels * sizeof(float), waveChannels * sizeof(float));
     }
 
     return pcmBytes;
@@ -382,4 +412,17 @@ static int ParseNonNegativeIntArg(string[] commandLineArgs, int index, int defau
     Console.Error.WriteLine($"Invalid {argName}: '{commandLineArgs[index]}'. Expected a non-negative integer.");
     Environment.Exit(1);
     return defaultValue;
+}
+
+static bool WaveFormatEquals(WaveFormat left, WaveFormat right)
+{
+    return left.Encoding == right.Encoding
+        && left.SampleRate == right.SampleRate
+        && left.Channels == right.Channels
+        && left.BitsPerSample == right.BitsPerSample;
+}
+
+static string DescribeWaveFormat(WaveFormat format)
+{
+    return $"{format.Encoding}, {format.SampleRate}Hz, {format.Channels}ch, {format.BitsPerSample}-bit";
 }

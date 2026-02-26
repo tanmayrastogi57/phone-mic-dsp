@@ -78,6 +78,12 @@ ipconfig
 - OEM audio routing differs by phone model/firmware. **CAMCORDER is best-effort** and may not map to the same physical mic on every device.
 
 
+
+## Windows >16-bit output path (Task 6.4)
+- The Windows receiver now decodes to **float32 internally** and negotiates to the selected device's preferred WASAPI mix format.
+- To use 24-bit/32-bit virtual routes, see **`docs/windows-format-upgrades.md`** for VB-CABLE Hi-Fi / VoiceMeeter guidance and Windows device format setup.
+- Startup logs print both internal and device formats so you can confirm negotiation behavior.
+
 ## Stereo mode (optional, Task 6.3)
 - The Android app now detects whether the selected microphone reports stereo input channels.
 - Enable **Stereo capture (experimental)** only when the app shows stereo support is available for the selected mic.
