@@ -1,38 +1,148 @@
 <Window x:Class="PhoneMicReceiver.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:PhoneMicReceiver.App"
+        mc:Ignorable="d"
         Title="Phone Mic Receiver"
-        Height="220"
-        Width="520">
-    <Grid Margin="16">
+        Height="760"
+        Width="1040"
+        MinHeight="640"
+        MinWidth="940">
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+
+    <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="2*" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">Output device</TextBlock>
-        <ComboBox
-            x:Name="DeviceComboBox"
-            Grid.Row="0"
-            Grid.Column="1"
-            DisplayMemberPath="FriendlyName"
-            SelectedValuePath="Id"
-            Margin="0,0,10,0"
-            SelectionChanged="DeviceComboBox_OnSelectionChanged" />
-        <Button
-            Grid.Row="0"
-            Grid.Column="2"
-            Content="Refresh"
-            Padding="14,4"
-            Click="RefreshDevices_OnClick" />
+        <Border Grid.Row="0" Padding="10" BorderBrush="#22000000" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="230" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0" Text="Selection behavior: prefer CABLE Input, then fallback to default render device." />
-        <TextBlock x:Name="StatusTextBlock" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0" Text="Listen port" />
+                <TextBox Grid.Column="1" Text="{Binding ListenPortText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
+
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Margin="0,0,6,0" Text="Output device" />
+                <ComboBox Grid.Column="4"
+                          ItemsSource="{Binding Devices}"
+                          SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                          DisplayMemberPath="FriendlyName" />
+                <Button Grid.Column="5" Margin="8,0,0,0" Padding="14,4" Content="Refresh" Command="{Binding RefreshDevicesCommand}" />
+
+                <TextBlock Grid.Column="7" VerticalAlignment="Center" Margin="0,0,6,0" Text="Latency ms" />
+                <TextBox Grid.Column="8" Text="{Binding OutputLatencyMsText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
+
+                <TextBlock Grid.Column="10" VerticalAlignment="Center" Margin="0,0,6,0" Text="Buffer ms" />
+                <TextBox Grid.Column="11" Text="{Binding BufferLengthMsText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
+
+                <StackPanel Grid.Column="13" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Margin="0,0,8,0" Padding="16,5" Content="Start" Command="{Binding StartCommand}" />
+                    <Button Margin="0,0,8,0" Padding="16,5" Content="Stop" Command="{Binding StopCommand}" />
+                    <Button Padding="16,5" Content="Test tone" Command="{Binding TestToneCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Margin="0,10,0,0" Padding="10" BorderBrush="#22000000" BorderThickness="1" CornerRadius="4">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock VerticalAlignment="Center" Margin="0,0,10,0" Text="Presets" FontWeight="SemiBold" />
+                <Button Margin="0,0,8,0" Padding="14,4" Content="Low-latency" Command="{Binding ApplyLowLatencyPresetCommand}" />
+                <Button Margin="0,0,8,0" Padding="14,4" Content="Balanced" Command="{Binding ApplyBalancedPresetCommand}" />
+                <Button Margin="0,0,8,0" Padding="14,4" Content="Stable" Command="{Binding ApplyStablePresetCommand}" />
+                <TextBlock VerticalAlignment="Center" Text="{Binding PresetSummary}" Foreground="#666" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Margin="0,10,0,0" Padding="10" BorderBrush="#22000000" BorderThickness="1" CornerRadius="4">
+            <UniformGrid Columns="6">
+                <StackPanel>
+                    <TextBlock Text="State" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding StateText}" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Packets/sec" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding PacketsPerSecondText}" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Decode errors" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding DecodeErrorsText}" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Buffered ms" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding BufferedMsText}" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Overflows" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding OverflowsText}" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Underruns" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding UnderrunsText}" />
+                </StackPanel>
+            </UniformGrid>
+        </Border>
+
+        <TextBlock Grid.Row="3" Margin="2,10,2,0" Text="{Binding StatusMessage}" Foreground="#444" TextWrapping="Wrap" />
+
+        <Border Grid.Row="4" Margin="0,10,0,0" Padding="8" BorderBrush="#22000000" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Text="Logs" />
+                    <ComboBox Width="160" SelectedValuePath="Tag" SelectedValue="{Binding SelectedLogFilter, Mode=TwoWay}">
+                        <ComboBoxItem Content="All" Tag="All" />
+                        <ComboBoxItem Content="Info" Tag="Info" />
+                        <ComboBoxItem Content="Warn" Tag="Warn" />
+                        <ComboBoxItem Content="Error" Tag="Error" />
+                    </ComboBox>
+                    <Button Margin="8,0,0,0" Padding="12,4" Content="Copy logs" Command="{Binding CopyLogsCommand}" />
+                    <Button Margin="8,0,0,0" Padding="12,4" Content="Open log folder" Command="{Binding OpenLogFolderCommand}" />
+                </StackPanel>
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding FilteredLogs}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          HeadersVisibility="Column"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          SelectionMode="Extended">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Time" Binding="{Binding TimestampDisplay}" Width="160" />
+                        <DataGridTextColumn Header="Level" Binding="{Binding Level}" Width="100" />
+                        <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="5" Margin="2,10,2,0" TextWrapping="Wrap" Foreground="#666"
+                   Text="Tip: select VB-CABLE 'CABLE Input' as output device here, then select 'CABLE Output' as Discord input device." />
     </Grid>
 </Window>

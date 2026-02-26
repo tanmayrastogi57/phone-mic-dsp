@@ -71,6 +71,9 @@ public sealed class ReceiverEngine : IAsyncDisposable
     private CancellationTokenSource? _runCts;
     private Task? _runTask;
     private ReceiverStats _latestStats = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private readonly object _playbackLock = new();
+    private BufferedWaveProvider? _playbackBuffer;
+    private int _activeChannels = ReceiverConfig.DefaultChannels;
 
     public ReceiverState State { get; private set; } = ReceiverState.Stopped;
     public ReceiverConfig? ActiveConfig { get; private set; }
@@ -155,6 +158,11 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 _runCts?.Dispose();
                 _runCts = null;
                 ActiveConfig = null;
+                lock (_playbackLock)
+                {
+                    _playbackBuffer = null;
+                    _activeChannels = ReceiverConfig.DefaultChannels;
+                }
                 TransitionTo(ReceiverState.Stopped);
             }
             finally
@@ -162,6 +170,28 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 _stateGate.Release();
             }
         }
+    }
+
+    public Task PlayTestToneAsync(int durationSeconds, int frequencyHz = 440)
+    {
+        if (durationSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(durationSeconds), "Duration must be greater than zero.");
+        }
+
+        lock (_playbackLock)
+        {
+            if (_playbackBuffer is null)
+            {
+                throw new InvalidOperationException("Receiver is not running.");
+            }
+
+            var toneBytes = GenerateSineFloat(frequencyHz, durationSeconds, ReceiverConfig.SampleRate, _activeChannels);
+            _playbackBuffer.AddSamples(toneBytes, 0, toneBytes.Length);
+        }
+
+        Log($"Queued {durationSeconds}s test tone at {frequencyHz} Hz.");
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -197,6 +227,12 @@ public sealed class ReceiverEngine : IAsyncDisposable
                 BufferDuration = TimeSpan.FromMilliseconds(config.BufferLengthMs),
                 DiscardOnBufferOverflow = true
             };
+
+            lock (_playbackLock)
+            {
+                _playbackBuffer = bufferedWaveProvider;
+                _activeChannels = config.Channels;
+            }
 
             IWaveProvider playbackProvider = bufferedWaveProvider;
             MediaFoundationResampler? resampler = null;
