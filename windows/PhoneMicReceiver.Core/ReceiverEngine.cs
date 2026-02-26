@@ -303,7 +303,12 @@ public sealed class ReceiverEngine : IAsyncDisposable
         }, linkedCts.Token);
 
         using var udpClient = new UdpClient(new IPEndPoint(IPAddress.Parse(config.BindAddress), config.ListenPort));
-        var opusDecoder = OpusDecoder.Create(ReceiverConfig.SampleRate, config.Channels);
+        var configuredDecoder = OpusDecoder.Create(ReceiverConfig.SampleRate, config.Channels);
+        int fallbackChannelCount = config.Channels == 1 ? 2 : 1;
+        OpusDecoder? fallbackDecoder = fallbackChannelCount == config.Channels
+            ? null
+            : OpusDecoder.Create(ReceiverConfig.SampleRate, fallbackChannelCount);
+        int activeStreamChannels = config.Channels;
         using var statsCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
         const int statsIntervalMs = 250;
         bool bufferPrimed = false;
@@ -311,7 +316,7 @@ public sealed class ReceiverEngine : IAsyncDisposable
         const int frameSize = 960;
         const int packetHeaderLengthBytes = 8;
         const int frameDurationMs = 20;
-        var decodedSamples = new short[frameSize * config.Channels];
+        var decodedSamples = new short[frameSize * 2];
         var floatSamples = new float[frameSize * config.Channels];
         var pcmFloatBytes = new byte[frameSize * config.Channels * sizeof(float)];
         int jitterTargetPackets = Math.Max(1, (int)Math.Ceiling(config.JitterTargetDelayMs / (double)frameDurationMs));
@@ -426,30 +431,55 @@ public sealed class ReceiverEngine : IAsyncDisposable
 
                     try
                     {
-                        int decodedPerChannel = opusDecoder.Decode(
-                            nextPayload.Buffer,
-                            0,
-                            nextPayload.Length,
-                            decodedSamples,
-                            0,
-                            frameSize,
-                            false);
+                        int decodedPerChannel;
+                        bool usedFallbackDecoder = false;
 
-                        int totalSamples = decodedPerChannel * config.Channels;
-                        if (totalSamples <= 0)
+                        try
+                        {
+                            decodedPerChannel = configuredDecoder.Decode(
+                                nextPayload.Buffer,
+                                0,
+                                nextPayload.Length,
+                                decodedSamples,
+                                0,
+                                frameSize,
+                                false);
+                            activeStreamChannels = config.Channels;
+                        }
+                        catch when (fallbackDecoder is not null)
+                        {
+                            decodedPerChannel = fallbackDecoder.Decode(
+                                nextPayload.Buffer,
+                                0,
+                                nextPayload.Length,
+                                decodedSamples,
+                                0,
+                                frameSize,
+                                false);
+                            activeStreamChannels = fallbackChannelCount;
+                            usedFallbackDecoder = true;
+                        }
+
+                        if (decodedPerChannel <= 0)
                         {
                             continue;
                         }
 
-                        totalSamples = Math.Min(totalSamples, decodedSamples.Length);
-                        totalSamples = Math.Min(totalSamples, floatSamples.Length);
+                        int outputSamples = Math.Min(decodedPerChannel * config.Channels, floatSamples.Length);
 
-                        for (int i = 0; i < totalSamples; i++)
+                        if (outputSamples <= 0)
                         {
-                            floatSamples[i] = decodedSamples[i] / 32768f;
+                            continue;
                         }
 
-                        int floatBytesCount = totalSamples * sizeof(float);
+                        if (usedFallbackDecoder)
+                        {
+                            Log($"Detected Opus channel mismatch. Decoding incoming {activeStreamChannels}ch stream and remapping to configured {config.Channels}ch output.");
+                        }
+
+                        RemapPcmChannels(decodedSamples, decodedPerChannel, activeStreamChannels, floatSamples, config.Channels);
+
+                        int floatBytesCount = outputSamples * sizeof(float);
                         Buffer.BlockCopy(floatSamples, 0, pcmFloatBytes, 0, floatBytesCount);
 
                         if (bufferedWaveProvider.BufferedBytes + floatBytesCount > bufferedWaveProvider.BufferLength)
@@ -639,6 +669,63 @@ public sealed class ReceiverEngine : IAsyncDisposable
             && left.SampleRate == right.SampleRate
             && left.Channels == right.Channels
             && left.BitsPerSample == right.BitsPerSample;
+    }
+
+    private static void RemapPcmChannels(
+        ReadOnlySpan<short> source,
+        int samplesPerChannel,
+        int sourceChannels,
+        Span<float> destination,
+        int destinationChannels)
+    {
+        if (samplesPerChannel <= 0)
+        {
+            return;
+        }
+
+        int framesToProcess = Math.Min(
+            samplesPerChannel,
+            Math.Min(source.Length / Math.Max(1, sourceChannels), destination.Length / Math.Max(1, destinationChannels)));
+
+        if (framesToProcess <= 0)
+        {
+            return;
+        }
+
+        if (sourceChannels == destinationChannels)
+        {
+            int sampleCount = framesToProcess * sourceChannels;
+            for (int i = 0; i < sampleCount; i++)
+            {
+                destination[i] = source[i] / 32768f;
+            }
+
+            return;
+        }
+
+        if (sourceChannels == 1 && destinationChannels == 2)
+        {
+            for (int frame = 0; frame < framesToProcess; frame++)
+            {
+                float sample = source[frame] / 32768f;
+                int destinationIndex = frame * 2;
+                destination[destinationIndex] = sample;
+                destination[destinationIndex + 1] = sample;
+            }
+
+            return;
+        }
+
+        if (sourceChannels == 2 && destinationChannels == 1)
+        {
+            for (int frame = 0; frame < framesToProcess; frame++)
+            {
+                int sourceIndex = frame * 2;
+                float left = source[sourceIndex] / 32768f;
+                float right = source[sourceIndex + 1] / 32768f;
+                destination[frame] = (left + right) * 0.5f;
+            }
+        }
     }
 
     private static string DescribeWaveFormat(WaveFormat format)
