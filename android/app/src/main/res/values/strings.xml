@@ -71,6 +71,12 @@ CAMCORDER: tuned for video recording mic/orientation</string>
     <string name="opus_frame_duration_10ms">10 ms</string>
     <string name="opus_frame_duration_20ms">20 ms</string>
     <string name="opus_fec_label">Opus in-band FEC</string>
+
+    <string name="stereo_toggle_label">Stereo capture (experimental)</string>
+    <string name="stereo_status_unknown">Stereo support: checking selected microphone</string>
+    <string name="stereo_status_supported">Stereo support: available on selected microphone</string>
+    <string name="stereo_status_not_supported">Stereo support: unavailable on selected microphone (mono will be used)</string>
+    <string name="stereo_status_not_supported_platform">Stereo support: unavailable on this Android version (mono will be used)</string>
     <string name="streaming_channel_name">Phone Mic Streaming</string>
     <string name="streaming_channel_description">Keeps Android microphone streaming alive in the foreground.</string>
     <string name="streaming_notification_title">Phone Mic streaming service</string>

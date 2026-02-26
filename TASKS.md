@@ -301,12 +301,14 @@ _Status: Implemented UI/config plumbing and presets; runtime quality tuning stil
 _Status: Added 8-byte UDP header (sequence + timestamp) on Android and sequence-based jitter buffer with reordering/late-drop logic on Windows; playout delay configurable via CLI._
 
 ### 6.3 Stereo support (only if necessary)
-- [ ] Detect if Android capture supports stereo
-- [ ] Add stereo toggle:
-  - [ ] channels = 2
-  - [ ] adjust Opus config (bitrate 96–128 kbps)
-- [ ] Ensure Windows output device supports stereo
-- [ ] Document Discord behavior (may downmix)
+- [x] Detect if Android capture supports stereo
+- [x] Add stereo toggle:
+  - [x] channels = 2
+  - [x] adjust Opus config (bitrate 96–128 kbps)
+- [x] Ensure Windows output device supports stereo
+- [x] Document Discord behavior (may downmix)
+
+_Status: Added Android stereo capability detection + toggle with mono fallback, stereo channel config propagation into Opus capture/encoding, and Windows receiver channel argument with stereo mix-format validation. README includes stereo run guidance and Discord downmix caveat._
 
 **Done when:** stereo runs end-to-end without breakage.
 

@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var opusPacketLossSeekBar: SeekBar
     private lateinit var opusFrameDurationSpinner: Spinner
     private lateinit var opusFecSwitch: androidx.appcompat.widget.SwitchCompat
+    private lateinit var stereoSwitch: androidx.appcompat.widget.SwitchCompat
+    private lateinit var stereoSupportText: TextView
     private lateinit var microphoneAdapter: ArrayAdapter<String>
     private lateinit var audioSourceAdapter: ArrayAdapter<String>
     private lateinit var opusPresetAdapter: ArrayAdapter<String>
@@ -120,6 +122,8 @@ class MainActivity : AppCompatActivity() {
         opusPacketLossSeekBar = findViewById(R.id.opusPacketLossSeekBar)
         opusFrameDurationSpinner = findViewById(R.id.opusFrameDurationSpinner)
         opusFecSwitch = findViewById(R.id.opusFecSwitch)
+        stereoSwitch = findViewById(R.id.stereoSwitch)
+        stereoSupportText = findViewById(R.id.stereoSupportText)
 
         val startButton = findViewById<Button>(R.id.startServiceButton)
         val stopButton = findViewById<Button>(R.id.stopServiceButton)
@@ -166,7 +170,8 @@ class MainActivity : AppCompatActivity() {
             expectedPacketLossPercent = sharedPreferences.getInt(
                 PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT,
                 restoredOpusPreset.config.expectedPacketLossPercent
-            )
+            ),
+            channelCount = sharedPreferences.getInt(PREF_KEY_OPUS_CHANNEL_COUNT, restoredOpusPreset.config.channelCount)
         )
 
         bindAudioSourceOptions(restoredAudioSourceMode)
@@ -186,6 +191,7 @@ class MainActivity : AppCompatActivity() {
                     .apply()
 
                 activeMicText.text = getString(R.string.active_mic_format, selectedOption.displayName)
+                refreshStereoSupportUi()
 
                 startService(AudioStreamingService.selectMicIntent(this@MainActivity, selectedOption.deviceId, selectedOption.direction))
             }
@@ -271,6 +277,12 @@ class MainActivity : AppCompatActivity() {
         })
 
         opusFecSwitch.setOnCheckedChangeListener { _, _ ->
+            if (!suppressOpusUiEvents) {
+                pushCurrentOpusConfigToService(sharedPreferences)
+            }
+        }
+
+        stereoSwitch.setOnCheckedChangeListener { _, _ ->
             if (!suppressOpusUiEvents) {
                 pushCurrentOpusConfigToService(sharedPreferences)
             }
@@ -413,6 +425,8 @@ class MainActivity : AppCompatActivity() {
         val frameIndex = opusFrameDurationOptions.indexOf(restoredConfig.frameDuration).takeIf { it >= 0 } ?: 0
         opusFrameDurationSpinner.setSelection(frameIndex, false)
         opusFecSwitch.isChecked = restoredConfig.fecEnabled
+        stereoSwitch.isChecked = restoredConfig.channelCount == OpusStreamingConfig.STEREO_CHANNEL_COUNT
+        refreshStereoSupportUi()
         suppressOpusUiEvents = false
     }
 
@@ -428,23 +442,32 @@ class MainActivity : AppCompatActivity() {
         val frameIndex = opusFrameDurationOptions.indexOf(config.frameDuration).takeIf { it >= 0 } ?: 0
         opusFrameDurationSpinner.setSelection(frameIndex, false)
         opusFecSwitch.isChecked = config.fecEnabled
+        stereoSwitch.isChecked = config.channelCount == OpusStreamingConfig.STEREO_CHANNEL_COUNT
+        refreshStereoSupportUi()
         suppressOpusUiEvents = false
         sharedPreferences.edit().putString(PREF_KEY_OPUS_PRESET, preset.name).apply()
     }
 
     private fun buildCurrentOpusConfig(): OpusStreamingConfig {
-        val bitrateBps = (opusBitrateSeekBar.progress + (OpusStreamingConfig.MIN_BITRATE_BPS / 1000)) * 1000
+        val rawBitrateBps = (opusBitrateSeekBar.progress + (OpusStreamingConfig.MIN_BITRATE_BPS / 1000)) * 1000
         val complexity = opusComplexitySeekBar.progress
         val frameDuration = opusFrameDurationOptions.getOrNull(opusFrameDurationSpinner.selectedItemPosition)
             ?: OpusStreamingConfig.DEFAULT.frameDuration
         val expectedPacketLoss = opusPacketLossSeekBar.progress
         val fecEnabled = opusFecSwitch.isChecked
+        val channelCount = if (stereoSwitch.isChecked) OpusStreamingConfig.STEREO_CHANNEL_COUNT else OpusStreamingConfig.MONO_CHANNEL_COUNT
+        val bitrateBps = if (channelCount == OpusStreamingConfig.STEREO_CHANNEL_COUNT) {
+            rawBitrateBps.coerceAtLeast(96_000)
+        } else {
+            rawBitrateBps
+        }
         return OpusStreamingConfig.sanitize(
             bitrateBps = bitrateBps,
             complexity = complexity,
             frameDurationMs = frameDuration.millis,
             fecEnabled = fecEnabled,
-            expectedPacketLossPercent = expectedPacketLoss
+            expectedPacketLossPercent = expectedPacketLoss,
+            channelCount = channelCount
         )
     }
 
@@ -456,9 +479,30 @@ class MainActivity : AppCompatActivity() {
             .putInt(PREF_KEY_OPUS_FRAME_DURATION_MS, config.frameDuration.millis)
             .putBoolean(PREF_KEY_OPUS_FEC_ENABLED, config.fecEnabled)
             .putInt(PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT, config.expectedPacketLossPercent)
+            .putInt(PREF_KEY_OPUS_CHANNEL_COUNT, config.channelCount)
             .apply()
 
         startService(AudioStreamingService.setOpusConfigIntent(this, config))
+    }
+
+
+    private fun refreshStereoSupportUi() {
+        val selectedOption = microphoneOptions.getOrNull(microphoneSpinner.selectedItemPosition)
+        val stereoSupported = selectedOption?.supportsStereo == true
+        val unsupportedByPlatform = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+
+        stereoSwitch.isEnabled = stereoSupported
+        if (!stereoSupported) {
+            suppressOpusUiEvents = true
+            stereoSwitch.isChecked = false
+            suppressOpusUiEvents = false
+        }
+
+        stereoSupportText.text = when {
+            unsupportedByPlatform -> getString(R.string.stereo_status_not_supported_platform)
+            stereoSupported -> getString(R.string.stereo_status_supported)
+            else -> getString(R.string.stereo_status_not_supported)
+        }
     }
 
     override fun onStart() {
@@ -482,6 +526,7 @@ class MainActivity : AppCompatActivity() {
             microphoneOptions = listOf(MicrophoneOption.defaultOption(this))
             bindMicrophoneOptions(preferredDeviceId)
             micRoutingStatusText.text = getString(R.string.mic_unsupported_message)
+            refreshStereoSupportUi()
             return
         }
 
@@ -511,7 +556,8 @@ class MainActivity : AppCompatActivity() {
                 MicrophoneOption(
                     deviceId = info.id,
                     displayName = displayName,
-                    direction = inferDirection(info.type)
+                    direction = inferDirection(info.type),
+                    supportsStereo = info.channelCounts.any { it >= OpusStreamingConfig.STEREO_CHANNEL_COUNT }
                 )
             }
         }
@@ -529,6 +575,7 @@ class MainActivity : AppCompatActivity() {
 
         val selectedOption = microphoneOptions.getOrNull(selectedIndex) ?: MicrophoneOption.defaultOption(this)
         activeMicText.text = getString(R.string.active_mic_format, selectedOption.displayName)
+        refreshStereoSupportUi()
     }
 
     private fun updateStatusViews(
@@ -597,14 +644,16 @@ class MainActivity : AppCompatActivity() {
     private data class MicrophoneOption(
         val deviceId: Int,
         val displayName: String,
-        val direction: Int
+        val direction: Int,
+        val supportsStereo: Boolean
     ) {
         companion object {
             fun defaultOption(context: Context): MicrophoneOption {
                 return MicrophoneOption(
                     deviceId = DEVICE_ID_DEFAULT,
                     displayName = context.getString(R.string.default_microphone_label),
-                    direction = AudioRecord.MIC_DIRECTION_UNSPECIFIED
+                    direction = AudioRecord.MIC_DIRECTION_UNSPECIFIED,
+                    supportsStereo = false
                 )
             }
         }
@@ -624,6 +673,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_KEY_OPUS_FRAME_DURATION_MS = "opus_frame_duration_ms"
         private const val PREF_KEY_OPUS_FEC_ENABLED = "opus_fec_enabled"
         private const val PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT = "opus_expected_packet_loss_percent"
+        private const val PREF_KEY_OPUS_CHANNEL_COUNT = "opus_channel_count"
         private const val DEFAULT_PORT = 5555
         private const val MIN_MIC_GAIN_PERCENT = 100
         private const val MAX_MIC_GAIN_PERCENT = 800

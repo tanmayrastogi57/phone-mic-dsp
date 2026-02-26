@@ -8,7 +8,7 @@ using NAudio.Wave;
 const string defaultDeviceSubstring = "CABLE Input";
 const int defaultPort = 5555;
 const int sampleRate = 48_000;
-const int channels = 1;
+const int defaultChannels = 1;
 const int bitsPerSample = 16;
 
 int listenPort = ParsePositiveIntArg(args, 0, defaultPort, "port");
@@ -19,6 +19,7 @@ int outputLatencyMs = ParsePositiveIntArg(args, 2, 50, "outputLatencyMs");
 int bufferLengthMs = ParsePositiveIntArg(args, 3, 500, "bufferLengthMs");
 int testToneSeconds = ParseNonNegativeIntArg(args, 4, 0, "testToneSeconds");
 int jitterTargetDelayMs = ParseNonNegativeIntArg(args, 5, 60, "jitterTargetDelayMs");
+int channels = ParseChannelCountArg(args, 6, defaultChannels);
 
 using var enumerator = new MMDeviceEnumerator();
 var renderDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
@@ -47,6 +48,12 @@ if (selectedDevice is null)
     Environment.Exit(1);
 }
 
+if (channels == 2 && selectedDevice.AudioClient.MixFormat.Channels < 2)
+{
+    Console.Error.WriteLine($"Selected device does not report stereo mix support (mixChannels={selectedDevice.AudioClient.MixFormat.Channels}).");
+    Environment.Exit(1);
+}
+
 var waveFormat = new WaveFormat(sampleRate, bitsPerSample, channels);
 var bufferedWaveProvider = new BufferedWaveProvider(waveFormat)
 {
@@ -59,7 +66,7 @@ output.Init(bufferedWaveProvider);
 output.Play();
 
 Console.WriteLine($"Selected output device: {selectedDevice.FriendlyName}");
-Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}, jitterTargetDelayMs={jitterTargetDelayMs}");
+Console.WriteLine($"Startup config: port={listenPort}, deviceSubstring=\"{deviceSubstring}\", outputLatencyMs={outputLatencyMs}, bufferLengthMs={bufferLengthMs}, jitterTargetDelayMs={jitterTargetDelayMs}, channels={channels}");
 Console.WriteLine("WASAPI output is running.");
 Console.WriteLine("Receiver is in Opus UDP mode. Press Ctrl+C to stop.");
 
@@ -80,7 +87,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     shutdown.Set();
 };
 
-var receiverTask = ReceiveUdpOpusAsync(listenPort, jitterTargetDelayMs, cancellationTokenSource.Token);
+var receiverTask = ReceiveUdpOpusAsync(listenPort, jitterTargetDelayMs, channels, cancellationTokenSource.Token);
 
 shutdown.Wait();
 
@@ -97,10 +104,10 @@ void WritePcmToBuffer(ReadOnlySpan<byte> pcmBytes)
     bufferedWaveProvider.AddSamples(pcmBytes.ToArray(), 0, pcmBytes.Length);
 }
 
-async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, CancellationToken cancellationToken)
+async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, int decodeChannels, CancellationToken cancellationToken)
 {
     using var udpClient = new UdpClient(port);
-    var opusDecoder = OpusDecoder.Create(sampleRate, channels);
+    var opusDecoder = OpusDecoder.Create(sampleRate, decodeChannels);
     long packetsThisWindow = 0;
     long packetsTotal = 0;
     long decodeErrors = 0;
@@ -116,7 +123,7 @@ async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, CancellationToken ca
     const int frameSize = 960;
     const int packetHeaderLengthBytes = 8;
     const int frameDurationMs = 20;
-    var decodedSamples = new short[frameSize * channels];
+    var decodedSamples = new short[frameSize * decodeChannels];
     int jitterTargetPackets = Math.Max(1, (int)Math.Ceiling(jitterDelayMs / (double)frameDurationMs));
     var jitterBuffer = new SequenceJitterBuffer(jitterTargetPackets, maxBufferedPackets: 200);
 
@@ -176,7 +183,7 @@ async Task ReceiveUdpOpusAsync(int port, int jitterDelayMs, CancellationToken ca
             try
             {
                 int decodedSamplesPerChannel = opusDecoder.Decode(orderedPayload, 0, orderedPayload.Length, decodedSamples, 0, frameSize, false);
-                int totalSamples = decodedSamplesPerChannel * channels;
+                int totalSamples = decodedSamplesPerChannel * decodeChannels;
 
                 if (totalSamples <= 0)
                 {
@@ -323,6 +330,24 @@ static byte[] GenerateSinePcm(int frequencyHz, int durationSeconds, int waveSamp
     }
 
     return pcmBytes;
+}
+
+
+static int ParseChannelCountArg(string[] commandLineArgs, int index, int defaultValue)
+{
+    if (commandLineArgs.Length <= index || string.IsNullOrWhiteSpace(commandLineArgs[index]))
+    {
+        return defaultValue;
+    }
+
+    if (int.TryParse(commandLineArgs[index], out int parsed) && (parsed == 1 || parsed == 2))
+    {
+        return parsed;
+    }
+
+    Console.Error.WriteLine($"Invalid channels: '{commandLineArgs[index]}'. Expected 1 or 2.");
+    Environment.Exit(1);
+    return defaultValue;
 }
 
 static int ParsePositiveIntArg(string[] commandLineArgs, int index, int defaultValue, string argName)

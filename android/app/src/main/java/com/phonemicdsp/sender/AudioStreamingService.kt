@@ -86,7 +86,8 @@ class AudioStreamingService : Service() {
             expectedPacketLossPercent = sharedPreferences.getInt(
                 PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT,
                 OpusStreamingConfig.DEFAULT.expectedPacketLossPercent
-            )
+            ),
+            channelCount = sharedPreferences.getInt(PREF_KEY_OPUS_CHANNEL_COUNT, OpusStreamingConfig.DEFAULT.channelCount)
         )
         micGain = sharedPreferences.getInt(PREF_KEY_MIC_GAIN_PERCENT, DEFAULT_MIC_GAIN_PERCENT)
             .coerceIn(MIN_MIC_GAIN_PERCENT, MAX_MIC_GAIN_PERCENT) / MIC_GAIN_PERCENT_SCALE
@@ -120,7 +121,8 @@ class AudioStreamingService : Service() {
                     expectedPacketLossPercent = intent.getIntExtra(
                         EXTRA_OPUS_EXPECTED_PACKET_LOSS_PERCENT,
                         OpusStreamingConfig.DEFAULT.expectedPacketLossPercent
-                    )
+                    ),
+                    channelCount = intent.getIntExtra(EXTRA_OPUS_CHANNEL_COUNT, OpusStreamingConfig.DEFAULT.channelCount)
                 )
                 val previousConfig = opusConfig
                 opusConfig = updatedConfig
@@ -207,9 +209,15 @@ class AudioStreamingService : Service() {
             return
         }
 
+        val channelMask = if (opusConfig.channelCount == OpusStreamingConfig.STEREO_CHANNEL_COUNT) {
+            AudioFormat.CHANNEL_IN_STEREO
+        } else {
+            AudioFormat.CHANNEL_IN_MONO
+        }
+
         val minimumBufferBytes = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
+            channelMask,
             AudioFormat.ENCODING_PCM_16BIT
         )
 
@@ -222,7 +230,10 @@ class AudioStreamingService : Service() {
             return
         }
 
-        val targetBufferSize = maxOf(minimumBufferBytes, opusConfig.frameDuration.samplesPerFrame * BYTES_PER_SAMPLE * 4)
+        val targetBufferSize = maxOf(
+            minimumBufferBytes,
+            opusConfig.frameDuration.samplesPerFrame * opusConfig.channelCount * BYTES_PER_SAMPLE * 4
+        )
 
         previousAudioMode = audioManager.mode
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
@@ -232,7 +243,7 @@ class AudioStreamingService : Service() {
         val localAudioRecord = AudioRecord(
             audioSourceConstant,
             SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
+            channelMask,
             AudioFormat.ENCODING_PCM_16BIT,
             targetBufferSize
         )
@@ -272,8 +283,9 @@ class AudioStreamingService : Service() {
 
     private fun captureLoop(localAudioRecord: AudioRecord, destinationAddress: InetAddress) {
         val localConfig = opusConfig
-        val frameSizeSamples = localConfig.frameDuration.samplesPerFrame
-        val frameBuffer = ShortArray(frameSizeSamples)
+        val frameSizeSamplesPerChannel = localConfig.frameDuration.samplesPerFrame
+        val frameSizeSamplesTotal = frameSizeSamplesPerChannel * localConfig.channelCount
+        val frameBuffer = ShortArray(frameSizeSamplesTotal)
         var framesSinceLastTick = 0
         var clippedSamplesSinceLastTick = 0
         var lastTickTime = System.currentTimeMillis()
@@ -292,8 +304,8 @@ class AudioStreamingService : Service() {
         val localOpusEncoder = try {
             OpusFrameEncoder(
                 sampleRate = SAMPLE_RATE,
-                channelCount = CHANNEL_COUNT,
-                frameSizeSamples = frameSizeSamples,
+                channelCount = localConfig.channelCount,
+                frameSizeSamples = frameSizeSamplesPerChannel,
                 bitrateBps = localConfig.bitrateBps,
                 complexity = localConfig.complexity,
                 enableFec = localConfig.fecEnabled,
@@ -313,7 +325,7 @@ class AudioStreamingService : Service() {
 
         try {
             localAudioRecord.startRecording()
-            Log.i(TAG, "AudioRecord started: mode=${selectedAudioSourceMode.name}, source=${selectedAudioSourceMode.audioSource}, sampleRate=$SAMPLE_RATE, frameSamples=$frameSizeSamples")
+            Log.i(TAG, "AudioRecord started: mode=${selectedAudioSourceMode.name}, source=${selectedAudioSourceMode.audioSource}, sampleRate=$SAMPLE_RATE, frameSamplesPerChannel=$frameSizeSamplesPerChannel, channels=${localConfig.channelCount}")
             Log.i(TAG, "UDP Opus sender started: target=${destinationAddress.hostAddress}:$destinationPort")
 
             var sequenceNumber = 0u
@@ -325,8 +337,8 @@ class AudioStreamingService : Service() {
                     continue
                 }
 
-                if (samplesRead != frameSizeSamples) {
-                    Log.w(TAG, "Expected $frameSizeSamples samples per frame, got $samplesRead; dropping partial frame.")
+                if (samplesRead != frameSizeSamplesTotal) {
+                    Log.w(TAG, "Expected $frameSizeSamplesTotal samples per frame, got $samplesRead; dropping partial frame.")
                     continue
                 }
 
@@ -670,6 +682,7 @@ class AudioStreamingService : Service() {
             .putInt(PREF_KEY_OPUS_FRAME_DURATION_MS, config.frameDuration.millis)
             .putBoolean(PREF_KEY_OPUS_FEC_ENABLED, config.fecEnabled)
             .putInt(PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT, config.expectedPacketLossPercent)
+            .putInt(PREF_KEY_OPUS_CHANNEL_COUNT, config.channelCount)
             .apply()
     }
 
@@ -694,6 +707,7 @@ class AudioStreamingService : Service() {
         const val EXTRA_OPUS_FRAME_DURATION_MS = "extra_opus_frame_duration_ms"
         const val EXTRA_OPUS_FEC_ENABLED = "extra_opus_fec_enabled"
         const val EXTRA_OPUS_EXPECTED_PACKET_LOSS_PERCENT = "extra_opus_expected_packet_loss_percent"
+        const val EXTRA_OPUS_CHANNEL_COUNT = "extra_opus_channel_count"
         const val EXTRA_STATUS_STREAMING = "extra_status_streaming"
         const val EXTRA_STATUS_PACKETS_PER_SECOND = "extra_status_packets_per_second"
         const val EXTRA_STATUS_DSP_SUMMARY = "extra_status_dsp_summary"
@@ -717,9 +731,9 @@ class AudioStreamingService : Service() {
         private const val PREF_KEY_OPUS_FRAME_DURATION_MS = "opus_frame_duration_ms"
         private const val PREF_KEY_OPUS_FEC_ENABLED = "opus_fec_enabled"
         private const val PREF_KEY_OPUS_EXPECTED_PACKET_LOSS_PERCENT = "opus_expected_packet_loss_percent"
+        private const val PREF_KEY_OPUS_CHANNEL_COUNT = "opus_channel_count"
 
         private const val SAMPLE_RATE = 48_000
-        private const val CHANNEL_COUNT = 1
         private const val BYTES_PER_SAMPLE = 2
         private const val STATS_INTERVAL_MS = 1_000L
         private const val MIN_MIC_GAIN = 1.0f
@@ -776,6 +790,7 @@ class AudioStreamingService : Service() {
                 putExtra(EXTRA_OPUS_FRAME_DURATION_MS, config.frameDuration.millis)
                 putExtra(EXTRA_OPUS_FEC_ENABLED, config.fecEnabled)
                 putExtra(EXTRA_OPUS_EXPECTED_PACKET_LOSS_PERCENT, config.expectedPacketLossPercent)
+                putExtra(EXTRA_OPUS_CHANNEL_COUNT, config.channelCount)
             }
     }
 
@@ -799,7 +814,7 @@ private class OpusFrameEncoder(
     private val codec: MediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
     private val outputBufferInfo = MediaCodec.BufferInfo()
     private var released = false
-    private val frameSizeBytes = frameSizeSamples * BYTES_PER_SAMPLE
+    private val frameSizeBytes = frameSizeSamples * channelCount * BYTES_PER_SAMPLE
 
     init {
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, sampleRate, channelCount).apply {
